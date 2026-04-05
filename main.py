@@ -1057,12 +1057,15 @@ async def delete_submission(request: Request, roll: str, qno: Optional[str] = No
     if os.path.isdir(base_submission_dir):
         import shutil
         # support comma-separated question list
-        q_dirs = [q.strip().upper() for q in qno.split(",") if q.strip()] if qno else os.listdir(base_submission_dir)
+        target_questions = [q.strip().upper() for q in qno.split(",") if q.strip()] if qno else None
         
-        for q in q_dirs:
-            q_dir = os.path.join(base_submission_dir, q)
-            if os.path.isdir(q_dir):
-                target_dir = os.path.join(q_dir, roll_upper)
+        roll_dir = os.path.join(base_submission_dir, roll_upper)
+        if os.path.isdir(roll_dir):
+            q_dirs = target_questions if target_questions else [
+                d for d in os.listdir(roll_dir) if os.path.isdir(os.path.join(roll_dir, d))
+            ]
+            for q in q_dirs:
+                target_dir = os.path.join(roll_dir, q)
                 if os.path.exists(target_dir):
                     try:
                         shutil.rmtree(target_dir)
@@ -1168,11 +1171,19 @@ async def run_moss(request: Request):
     
     base_submission_dir = os.path.join(".active_lab", "submissions")
     
-    # Handle 'All' by looping through all question directories
+    # Handle 'All' by finding all question directories across all students
     is_all = qno.lower() == "all" or not qno
-    q_dirs = [qno.upper()]
     if is_all:
-        q_dirs = sorted([d for d in os.listdir(base_submission_dir) if os.path.isdir(os.path.join(base_submission_dir, d))])
+        q_set = set()
+        for roll in os.listdir(base_submission_dir):
+            roll_path = os.path.join(base_submission_dir, roll)
+            if os.path.isdir(roll_path):
+                for d in os.listdir(roll_path):
+                    if os.path.isdir(os.path.join(roll_path, d)):
+                        q_set.add(d)
+        q_dirs = sorted(q_set)
+    else:
+        q_dirs = [qno.upper()]
         
     generated_reports = []
     
@@ -1181,16 +1192,16 @@ async def run_moss(request: Request):
         m = mosspy.Moss(moss_id, "cc")
         m.setCommentString(f"{course_name} - {lab_name} - {q}")
         
-        q_path = os.path.join(base_submission_dir, q)
-        if not os.path.isdir(q_path): continue
-            
         cpp_files_found = 0
-        for roll in os.listdir(q_path):
-            roll_path = os.path.join(q_path, roll)
+        for roll in os.listdir(base_submission_dir):
+            roll_path = os.path.join(base_submission_dir, roll)
             if not os.path.isdir(roll_path): continue
+            
+            q_path = os.path.join(roll_path, q)
+            if not os.path.isdir(q_path): continue
                 
             # Pick best/latest submission
-            marks_path = os.path.join(roll_path, "marks.txt")
+            marks_path = os.path.join(q_path, "marks.txt")
             best_ts, best_mark = None, -1.0
             if os.path.exists(marks_path):
                 try:
@@ -1205,11 +1216,11 @@ async def run_moss(request: Request):
                                 except: pass
                 except: pass
             
-            ts_dirs = sorted([d for d in os.listdir(roll_path) if os.path.isdir(os.path.join(roll_path, d))], reverse=True)
+            ts_dirs = sorted([d for d in os.listdir(q_path) if os.path.isdir(os.path.join(q_path, d))], reverse=True)
             target_dir = next((ts for ts in ts_dirs if best_ts and (best_ts.replace('-', '').replace(' ', '-').replace(':', '') in ts or ts in best_ts)), ts_dirs[0] if ts_dirs else None)
                 
             if target_dir:
-                ts_path = os.path.join(roll_path, target_dir)
+                ts_path = os.path.join(q_path, target_dir)
                 cpps = [f for f in os.listdir(ts_path) if f.endswith(".cpp")]
                 if cpps:
                     m.addFile(os.path.join(ts_path, cpps[0]), f"{q}/{roll}.cpp")
@@ -1284,24 +1295,31 @@ async def generate_moss_colab(request: Request):
     base_submission_dir = os.path.join(".active_lab", "submissions")
     
     is_all = qno.lower() == "all" or not qno
-    q_dirs = [qno.upper()] if not is_all else sorted([
-        d for d in os.listdir(base_submission_dir)
-        if os.path.isdir(os.path.join(base_submission_dir, d))
-    ])
+    if is_all:
+        q_set = set()
+        for roll in os.listdir(base_submission_dir):
+            roll_path = os.path.join(base_submission_dir, roll)
+            if os.path.isdir(roll_path):
+                for d in os.listdir(roll_path):
+                    if os.path.isdir(os.path.join(roll_path, d)):
+                        q_set.add(d)
+        q_dirs = sorted(q_set)
+    else:
+        q_dirs = [qno.upper()]
     
     # Collect all .cpp files as {display_name: base64_content}
     all_files = {}
     
     for q in q_dirs:
-        q_path = os.path.join(base_submission_dir, q)
-        if not os.path.isdir(q_path): continue
-        
-        for roll in os.listdir(q_path):
-            roll_path = os.path.join(q_path, roll)
+        for roll in os.listdir(base_submission_dir):
+            roll_path = os.path.join(base_submission_dir, roll)
             if not os.path.isdir(roll_path): continue
             
+            q_path = os.path.join(roll_path, q)
+            if not os.path.isdir(q_path): continue
+            
             # Same best-submission logic as run-moss
-            marks_path = os.path.join(roll_path, "marks.txt")
+            marks_path = os.path.join(q_path, "marks.txt")
             best_ts, best_mark = None, -1.0
             if os.path.exists(marks_path):
                 try:
@@ -1316,11 +1334,11 @@ async def generate_moss_colab(request: Request):
                                 except: pass
                 except: pass
             
-            ts_dirs = sorted([d for d in os.listdir(roll_path) if os.path.isdir(os.path.join(roll_path, d))], reverse=True)
+            ts_dirs = sorted([d for d in os.listdir(q_path) if os.path.isdir(os.path.join(q_path, d))], reverse=True)
             target_dir = next((ts for ts in ts_dirs if best_ts and (best_ts.replace('-', '').replace(' ', '-').replace(':', '') in ts or ts in best_ts)), ts_dirs[0] if ts_dirs else None)
             
             if target_dir:
-                ts_path = os.path.join(roll_path, target_dir)
+                ts_path = os.path.join(q_path, target_dir)
                 cpps = [f for f in os.listdir(ts_path) if f.endswith(".cpp")]
                 if cpps:
                     filepath = os.path.join(ts_path, cpps[0])
@@ -1695,10 +1713,17 @@ async def download_submissions(request: Request):
     with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
         submissions_dir = os.path.join(".active_lab", "submissions")
         
-        # 1. Identify all questions (Q1, Q2, etc)
-        questions = []
+        # 1. Identify all questions from testcases (source of truth) + student subdirs
+        questions = set()
+        testcases_dir = os.path.join(".active_lab", "testcases")
+        if os.path.isdir(testcases_dir):
+            questions.update(d for d in os.listdir(testcases_dir) if os.path.isdir(os.path.join(testcases_dir, d)))
         if os.path.exists(submissions_dir):
-            questions = sorted([d for d in os.listdir(submissions_dir) if os.path.isdir(os.path.join(submissions_dir, d))])
+            for roll in os.listdir(submissions_dir):
+                roll_path = os.path.join(submissions_dir, roll)
+                if os.path.isdir(roll_path):
+                    questions.update(d for d in os.listdir(roll_path) if os.path.isdir(os.path.join(roll_path, d)))
+        questions = sorted(questions)
         
         # 2. Build the dynamic grading report
         ordered_students = []
@@ -1726,7 +1751,7 @@ async def download_submissions(request: Request):
             is_registered = s_roll in registered_students
             
             for q in questions:
-                marks_path = os.path.join(submissions_dir, q, s_roll, "marks.txt")
+                marks_path = os.path.join(submissions_dir, s_roll, q, "marks.txt")
                 if os.path.exists(marks_path):
                     has_submitted_any = True
                     try:
@@ -1788,18 +1813,8 @@ async def download_submissions(request: Request):
                         continue
                     file_path = os.path.join(root, file)
                     rel_path = os.path.relpath(file_path, submissions_dir)
-                    parts = rel_path.split(os.sep)
-                    
-                    # Transform [QNO, ROLL, ...] -> [ROLL, QNO, ...]
-                    if len(parts) >= 2:
-                        qno = parts[0]
-                        roll = parts[1]
-                        rest = parts[2:]
-                        arcname = os.path.join(roll, qno, *rest)
-                    else:
-                        arcname = rel_path # Should not happen with current structure
-                        
-                    zf.write(file_path, arcname)
+                    # Layout is already ROLL/QNO/... — write as-is
+                    zf.write(file_path, rel_path)
                     
     memory_file.seek(0)
     return Response(
@@ -2045,12 +2060,11 @@ async def get_student_submissions(roll_no: str):
     roll_no = roll_no.upper().strip()
     questions = []
     
-    # scan for question dirs
-    for d in os.listdir(_sub_dir):
-        q_path = os.path.join(_sub_dir, d)
-        if os.path.isdir(q_path):
-            # check if students folder exists for this question
-            if os.path.isdir(os.path.join(q_path, roll_no)):
+    # Layout: submissions/ROLL/QNO — check this student's subdirs directly
+    roll_dir = os.path.join(_sub_dir, roll_no)
+    if os.path.isdir(roll_dir):
+        for d in os.listdir(roll_dir):
+            if os.path.isdir(os.path.join(roll_dir, d)):
                 questions.append(d)
                 
     questions.sort()
@@ -2058,12 +2072,20 @@ async def get_student_submissions(roll_no: str):
 
 @app.get("/api/questions")
 async def get_questions():
+    """Get question list from testcases (source of truth) + student submissions."""
+    questions = set()
+    # Primary source: testcases directory
+    tc_dir = os.path.join(".active_lab", "testcases")
+    if os.path.isdir(tc_dir):
+        questions.update(d for d in os.listdir(tc_dir) if os.path.isdir(os.path.join(tc_dir, d)))
+    # Fallback: scan student submission subdirs
     _sub_dir = os.path.join(".active_lab", "submissions")
-    if not os.path.isdir(_sub_dir):
-        return JSONResponse(content=[])
-    questions = [d for d in os.listdir(_sub_dir) if os.path.isdir(os.path.join(_sub_dir, d))]
-    questions.sort()
-    return JSONResponse(content=questions)
+    if os.path.isdir(_sub_dir):
+        for roll in os.listdir(_sub_dir):
+            roll_path = os.path.join(_sub_dir, roll)
+            if os.path.isdir(roll_path):
+                questions.update(d for d in os.listdir(roll_path) if os.path.isdir(os.path.join(roll_path, d)))
+    return JSONResponse(content=sorted(questions))
 
 @app.get("/leaderboard", response_class=HTMLResponse)
 async def serve_leaderboard_index(request: Request):
@@ -2091,13 +2113,24 @@ async def get_leaderboard_data(qno: str):
     if not qno_upper.replace('_','').isalnum():
         return JSONResponse(content=[])
 
-    q_dir = os.path.join(".active_lab", "submissions", qno_upper)
+    q_dir = os.path.join(".active_lab", "submissions")
     
     if not os.path.isdir(q_dir):
         return JSONResponse(content=[])
 
+    # Cache bust: use the max mtime across all submissions/*/QNO dirs
     try:
-        q_dir_mtime = os.path.getmtime(q_dir)
+        max_mtime = 0.0
+        for roll in os.listdir(q_dir):
+            qno_path = os.path.join(q_dir, roll, qno_upper)
+            if os.path.isdir(qno_path):
+                try:
+                    mt = os.path.getmtime(qno_path)
+                    if mt > max_mtime:
+                        max_mtime = mt
+                except OSError:
+                    pass
+        q_dir_mtime = max_mtime if max_mtime > 0 else time.time()
     except OSError:
         q_dir_mtime = time.time()
         
@@ -2109,10 +2142,12 @@ async def get_leaderboard_data(qno: str):
 
     leaderboard_data = []
     
-    for roll_dir in os.listdir(q_dir):
-        student_path = os.path.join(q_dir, roll_dir)
-        if os.path.isdir(student_path):
-            marks_log_path = os.path.join(student_path, "marks.txt")
+    for roll_dir_name in os.listdir(q_dir):
+        roll_path = os.path.join(q_dir, roll_dir_name)
+        if not os.path.isdir(roll_path): continue
+        student_q_path = os.path.join(roll_path, qno_upper)
+        if os.path.isdir(student_q_path):
+            marks_log_path = os.path.join(student_q_path, "marks.txt")
             if os.path.exists(marks_log_path):
                 max_marks = -1
                 try:
@@ -2125,7 +2160,7 @@ async def get_leaderboard_data(qno: str):
                             except (IndexError, ValueError):
                                 continue
                     if max_marks != -1:
-                        leaderboard_data.append({"roll": roll_dir, "marks": max_marks})
+                        leaderboard_data.append({"roll": roll_dir_name, "marks": max_marks})
                 except Exception:
                     continue
 
@@ -2253,7 +2288,7 @@ async def request_recovery(qno: str, roll: str, request: Request):
     if roll_upper not in get_student_list() and "*" not in get_student_list():
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not registered for this course.")
 
-    std_dir = os.path.join(".active_lab", "submissions", qno_upper, roll_upper)
+    std_dir = os.path.join(".active_lab", "submissions", roll_upper, qno_upper)
     if not os.path.isdir(std_dir):
         raise HTTPException(status_code=404, detail="No submissions found for this question.")
 
@@ -2309,7 +2344,7 @@ async def recover_code(qno: str, roll: str, request: Request):
         if not is_admin:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="IP mismatch. Please download the starter kit on this computer first.")
     
-    std_dir = os.path.join(".active_lab", "submissions", qno_upper, roll_upper)
+    std_dir = os.path.join(".active_lab", "submissions", roll_upper, qno_upper)
     if not os.path.isdir(std_dir):
         raise HTTPException(status_code=404, detail="No submissions found for this question.")
         
@@ -2413,18 +2448,9 @@ async def get_submission_status_api():
             d for d in os.listdir(testcases_dir)
             if os.path.isdir(os.path.join(testcases_dir, d))
         ])
-    if os.path.isdir(base_submission_dir):
-        question_ids.update([
-            d for d in os.listdir(base_submission_dir)
-            if os.path.isdir(os.path.join(base_submission_dir, d))
-        ])
-    
-    question_dirs = sorted(list(question_ids))
-    
-    # build status report per registered student
+    # With ROLL/QNO layout, top-level dirs in submissions are student rolls
+    # Initialize registered students from ip_roll_map + registrations.csv
     registered_students = set(ip_roll_map.keys())
-    
-    # Also include everyone from registrations.csv so restarts don't lose them
     import csv
     registrations_file = os.path.join(".active_lab", "registrations.csv")
     if os.path.exists(registrations_file):
@@ -2436,22 +2462,26 @@ async def get_submission_status_api():
                         registered_students.add(row["roll_no"].upper())
         except Exception:
             pass
-            
-    # Also include anyone who has a submission folder even if not registered
+    
+    # With ROLL/QNO layout, top-level dirs in submissions are student rolls
     if os.path.isdir(base_submission_dir):
-        for qno in question_dirs:
-            q_dir = os.path.join(base_submission_dir, qno)
-            if os.path.isdir(q_dir):
-                for roll in os.listdir(q_dir):
-                    if os.path.isdir(os.path.join(q_dir, roll)):
-                        registered_students.add(roll.upper())
+        # Collect question IDs from student subdirs
+        for roll in os.listdir(base_submission_dir):
+            roll_path = os.path.join(base_submission_dir, roll)
+            if os.path.isdir(roll_path):
+                registered_students.add(roll.upper())
+                for qd in os.listdir(roll_path):
+                    if os.path.isdir(os.path.join(roll_path, qd)):
+                        question_ids.add(qd)
+    
+    question_dirs = sorted(list(question_ids))
     
     report = {}
     
     for roll_no in sorted(list(registered_students)):
         student_status = {}
         for qno in question_dirs:
-            submission_path = os.path.join(base_submission_dir, qno, roll_no)
+            submission_path = os.path.join(base_submission_dir, roll_no, qno)
             student_status[qno] = os.path.isdir(submission_path)
         report[roll_no] = student_status
 

@@ -294,10 +294,10 @@ def handle_submission(qno: str, roll: str, filename: str, content: str):
     logs = [f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Processing submission for Roll: {roll_upper}, Q-No: {qno_upper}\n"]
 
     # Directory structure:
-    #   .active_lab/submissions/Q1/CS24B001/20260320-113000/
-    #                          ^^^ question  ^^^ student   ^^^ timestamp
-    q_dir = os.path.join(".active_lab", "submissions", qno_upper)
-    std_dir = os.path.join(q_dir, roll_upper)
+    #   .active_lab/submissions/CS24B001/Q1/20260320-113000/
+    #                          ^^^ student  ^^^ question   ^^^ timestamp
+    roll_dir = os.path.join(".active_lab", "submissions", roll_upper)
+    std_dir = os.path.join(roll_dir, qno_upper)
 
     os.makedirs(std_dir, exist_ok=True) 
 
@@ -535,10 +535,10 @@ def _update_grades_csv(roll: str, qno: str, new_marks: float):
         current_best = parse_mark(grades[roll].get(qno, "Absent"))
         if float(new_marks) > current_best:
             grades[roll][qno] = str(float(new_marks))
-            # Touch the question directory to bust the leaderboard cache
-            # (main.py checks directory mtime to know when to refresh)
+            # Touch the student's question directory to bust the leaderboard cache
+            # (main.py scans submissions/*/QNO to rebuild leaderboard)
             try:
-                q_dir = os.path.join(".active_lab", "submissions", qno)
+                q_dir = os.path.join(".active_lab", "submissions", roll, qno)
                 os.utime(q_dir, None)
             except OSError:
                 pass

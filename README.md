@@ -90,6 +90,11 @@ dcf_server_iitm/
             ├── testcases/Q1/{input,output}/
             ├── statics/<LAB>/  (starter kit template)
             ├── submissions/
+            │   └── <ROLL>/          (student-first layout)
+            │       └── <QNO>/
+            │           ├── marks.txt         (append-only log: timestamp, marks)
+            │           └── <TIMESTAMP>/      (one folder per submission attempt)
+            │               └── <ROLL>.cpp
             ├── registrations.csv
             ├── violations.csv
             └── grades.csv
@@ -262,7 +267,7 @@ Their PC crashed, they moved seats — whatever. Their new IP won't match their 
 
 ### Downloading all submissions
 
-Click "Download All Submissions" in the admin panel. You get a ZIP with every student's code organized by roll number, plus a `grades.csv` summarizing everyone's best marks per question.
+Click "Download All Submissions" in the admin panel. You get a ZIP with every student's code organized by roll number and question (matching the on-disk `submissions/ROLL/QNO/` layout), plus a `grades.csv` summarizing everyone's best marks per question.
 
 ### Deleting a student's submission
 
