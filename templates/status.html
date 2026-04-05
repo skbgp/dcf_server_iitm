@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Submission Status</title>
+    <link rel="stylesheet" href="/assets/fonts/fonts.css">
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --surface-color: rgba(30, 36, 51, 0.7);
+            --surface-hover: rgba(45, 53, 72, 0.8);
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-color: rgba(255, 255, 255, 0.08);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            background-image:
+                radial-gradient(circle at 15% 50%, rgba(99, 102, 241, 0.1), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(236, 72, 153, 0.1), transparent 25%);
+            background-attachment: fixed;
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 6rem 1.5rem 3rem 1.5rem;
+            line-height: 1.5;
+            font-size: 0.9rem;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            background: var(--surface-color);
+            border-radius: 16px;
+            padding: 2.5rem;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border-color);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+            animation: fadeIn 0.4s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2.5rem;
+            flex-wrap: wrap;
+            gap: 1.5rem;
+        }
+
+        .title-area h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2rem;
+            font-weight: 800;
+            margin-bottom: 0.25rem;
+            color: #fff;
+        }
+
+        .title-area p {
+            color: var(--text-muted);
+            font-size: 1rem;
+        }
+
+        .stats {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .stat-card {
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid var(--border-color);
+            padding: 0.75rem 1.25rem;
+            border-radius: 12px;
+            text-align: center;
+            min-width: 110px;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 800;
+            font-family: 'Outfit', sans-serif;
+            color: var(--primary);
+        }
+
+        .stat-value.danger {
+            color: var(--danger);
+        }
+
+        .stat-value.success {
+            color: var(--success);
+        }
+
+        .stat-label {
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+        }
+
+        /* ── Filters ── */
+        .controls {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .filter-btn {
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid var(--border-color);
+            color: var(--text-muted);
+            padding: 0.6rem 1.2rem;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .filter-btn:hover {
+            color: #fff;
+            background: rgba(30, 41, 59, 0.8);
+        }
+
+        .filter-btn.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        #searchBox {
+            flex: 1;
+            min-width: 250px;
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 0.6rem 1rem;
+            color: #fff;
+            outline: none;
+            font-family: inherit;
+        }
+
+        #searchBox:focus {
+            border-color: var(--primary);
+        }
+
+        /* ── List ── */
+        .status-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+        }
+
+        .student-row {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            background: rgba(15, 23, 42, 0.3);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 0.8rem 1.25rem;
+            transition: background 0.2s;
+        }
+
+        .student-row:hover {
+            background: var(--surface-hover);
+        }
+
+        .roll-no {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--text-main);
+            min-width: 140px;
+        }
+
+        .pills {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .q-pill {
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 0.25rem 0.6rem;
+            border-radius: 6px;
+            border: 1px solid transparent;
+        }
+
+        .q-pill.done {
+            background: rgba(16, 185, 129, 0.1);
+            color: #34d399;
+            border-color: rgba(16, 185, 129, 0.2);
+        }
+
+        .q-pill.missing {
+            background: rgba(239, 68, 68, 0.1);
+            color: #f87171;
+            border-color: rgba(239, 68, 68, 0.2);
+        }
+
+        .nav-back {
+            position: absolute;
+            top: 1.5rem;
+            left: 1.5rem;
+            display: inline-flex;
+            align-items: center;
+            width: fit-content;
+            text-decoration: none;
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            color: var(--text-muted, #94a3b8);
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+            transition: all 0.2s;
+            font-size: 0.85rem;
+            font-family: 'Inter', sans-serif;
+            z-index: 1000;
+        }
+
+        .nav-back:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+            transform: translateY(-1px);
+        }
+
+        .loader {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
+        @media (max-width: 640px) {
+            .header {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            .student-row {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.5rem;
+            }
+
+            .roll-no {
+                min-width: auto;
+            }
+
+            .stats {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .nav-back {
+                top: 1rem;
+                left: 1rem;
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <a href="/" id="backBtn" class="nav-back">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" style="margin-right:0.5rem;">
+            <line x1="19" y1="12" x2="5" y2="12"></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+        </svg>
+        <span id="backBtnText">Back to Dashboard</span>
+    </a>
+
+    <div class="container">
+        <div class="header">
+            <div class="title-area">
+                <h1>Submission Status</h1>
+                <p>Real-time monitor of student code submissions</p>
+            </div>
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-total">-</div>
+                    <div class="stat-label">Registered</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value danger" id="stat-missing">-</div>
+                    <div class="stat-label">Missing</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button class="filter-btn active" onclick="setFilter('all', this)">All Students</button>
+            <button class="filter-btn" onclick="setFilter('missing', this)">Zero Submissions</button>
+            <input type="text" id="searchBox" placeholder="Search Roll Number..." oninput="renderGrid()">
+        </div>
+
+        <div id="loading" class="loader">Loading live submission data...</div>
+        <div class="status-list" id="grid"></div>
+    </div>
+
+    <script>
+        let allStudents = [];
+        let currentFilter = 'all';
+
+        async function fetchStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+
+                allStudents = Object.entries(data).map(([roll, questions]) => {
+                    const qDetails = Object.entries(questions);
+                    const doneQs = qDetails.filter(q => q[1]).length;
+                    const totalQs = qDetails.length;
+
+                    return { roll, questions, doneQs, totalQs, isMissing: doneQs === 0 };
+                }).sort((a, b) => a.roll.localeCompare(b.roll));
+
+                updateStats();
+                renderGrid();
+                document.getElementById('loading').style.display = 'none';
+
+            } catch (err) {
+                document.getElementById('loading').innerText = "Failed to fetch status data.";
+            }
+        }
+
+        function updateStats() {
+            document.getElementById('stat-total').innerText = allStudents.length;
+            const missingCount = allStudents.filter(s => s.isMissing).length;
+            document.getElementById('stat-missing').innerText = missingCount;
+        }
+
+        function setFilter(filter, btn) {
+            currentFilter = filter;
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            renderGrid();
+        }
+
+        function renderGrid() {
+            const grid = document.getElementById('grid');
+            const search = document.getElementById('searchBox').value.toLowerCase();
+            grid.innerHTML = '';
+
+            let filtered = allStudents;
+
+            if (search) filtered = filtered.filter(s => s.roll.toLowerCase().includes(search));
+
+            if (currentFilter === 'missing') filtered = filtered.filter(s => s.isMissing);
+
+            if (filtered.length === 0) {
+                grid.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 2rem;">No students found.</div>`;
+                return;
+            }
+
+            filtered.forEach(student => {
+                const row = document.createElement('div');
+                row.className = 'student-row';
+
+                let qHTML = '';
+                for (const [qno, isDone] of Object.entries(student.questions)) {
+                    qHTML += `<span class="q-pill ${isDone ? 'done' : 'missing'}">${qno}</span>`;
+                }
+
+                row.innerHTML = `
+                    <div class="roll-no">${student.roll}</div>
+                    <div class="pills">${qHTML}</div>
+                `;
+                grid.appendChild(row);
+            });
+        }
+
+        fetchStatus();
+        setInterval(fetchStatus, 5000);
+
+        // Link Admin Status
+        fetch('/api/is-admin').then(res => res.json()).then(data => {
+            if (data.is_admin) {
+                const b = document.getElementById('backBtn');
+                if (b) b.href = '/admin';
+                const span = document.getElementById('backBtnText');
+                if (span) span.innerText = 'Back to Admin Panel';
+            }
+        });
+    </script>
+</body>
+
+</html>

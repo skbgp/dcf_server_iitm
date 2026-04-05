@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Select Leaderboard</title>
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            min-height: 100vh;
+            background-color: #0f172a;
+            color: #e2e8f0;
+            font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            padding: 2.5rem 1rem 3rem;
+            font-size: 0.9rem;
+        }
+
+        /* ── Animated gradient background blobs ── */
+        .bg-blobs {
+            position: fixed;
+            inset: 0;
+            overflow: hidden;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .blob {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(120px);
+            opacity: 0.18;
+            animation: drift 18s ease-in-out infinite alternate;
+        }
+
+        .blob-1 {
+            width: 520px;
+            height: 520px;
+            background: #6366f1;
+            top: -120px;
+            left: -120px;
+            animation-delay: 0s;
+        }
+
+        .blob-2 {
+            width: 400px;
+            height: 400px;
+            background: #0ea5e9;
+            bottom: -80px;
+            right: -80px;
+            animation-delay: -6s;
+        }
+
+        .blob-3 {
+            width: 300px;
+            height: 300px;
+            background: #8b5cf6;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            animation-delay: -12s;
+        }
+
+        @keyframes drift {
+            from {
+                transform: translate(0, 0) scale(1);
+            }
+
+            to {
+                transform: translate(40px, 30px) scale(1.08);
+            }
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.4;
+                transform: scale(0.8);
+            }
+        }
+
+        /* ── Layout ── */
+        .page-wrap {
+            position: relative;
+            z-index: 1;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* ── Header card ── */
+        .header-card {
+            background: rgba(30, 41, 59, 0.85);
+            border: 1px solid rgba(99, 102, 241, 0.25);
+            border-radius: 1.25rem;
+            padding: 2.25rem 2.5rem 2rem;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            margin-bottom: 1.25rem;
+            text-align: center;
+        }
+
+        .badge {
+            display: inline-block;
+            background: rgba(99, 102, 241, 0.15);
+            color: #a5b4fc;
+            border: 1px solid rgba(99, 102, 241, 0.35);
+            font-size: 0.72rem;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            padding: 0.3rem 0.8rem;
+            border-radius: 999px;
+            margin-bottom: 1rem;
+        }
+
+        h1 {
+            font-size: 2rem;
+            font-weight: 800;
+            line-height: 1.2;
+            background: linear-gradient(135deg, #e0e7ff 0%, #a5b4fc 60%, #818cf8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.4rem;
+            white-space: normal;
+        }
+
+        .subtitle {
+            font-size: 0.9rem;
+            color: #94a3b8;
+            letter-spacing: 0.03em;
+        }
+
+        /* ── Questions Grid ── */
+        .questions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, max-content));
+            justify-content: center;
+            gap: 1rem;
+            margin-bottom: 1.25rem;
+        }
+
+        .question-card {
+            background: rgba(30, 41, 59, 0.85);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            border-radius: 1rem;
+            padding: 1.5rem;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            cursor: pointer;
+            transition: transform 0.2s, background 0.2s, border-color 0.2s;
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .question-card:hover {
+            transform: translateY(-4px);
+            border-color: rgba(99, 102, 241, 0.5);
+            background: rgba(30, 41, 59, 1);
+        }
+
+        .question-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #818cf8;
+            margin-bottom: 0.5rem;
+        }
+
+        .question-subtitle {
+            font-size: 0.8rem;
+            color: #64748b;
+        }
+
+        .empty-state {
+            grid-column: 1 / -1;
+            text-align: center;
+            padding: 3rem 1.5rem;
+            color: #64748b;
+            background: rgba(30, 41, 59, 0.85);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            border-radius: 1rem;
+        }
+
+        .loader {
+            grid-column: 1 / -1;
+            text-align: center;
+            padding: 3rem;
+            color: #94a3b8;
+        }
+
+        /* ── Footer ── */
+        .footer-note {
+            margin-top: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+            font-size: 0.82rem;
+            color: #64748b;
+            padding-top: 1.5rem;
+        }
+
+        .footer-note a {
+            text-decoration: none;
+            font-weight: 500;
+            padding: 0.45rem 1rem;
+            border-radius: 999px;
+            color: #a5b4fc;
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.15);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            display: inline-block;
+        }
+
+        .footer-note a:hover {
+            background: rgba(99, 102, 241, 0.2);
+            border-color: rgba(99, 102, 241, 0.4);
+            color: #c7d2fe;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+        }
+
+        @media (max-width: 640px) {
+            .header-card {
+                margin-top: 2.5rem;
+            }
+
+            .footer-note {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+
+            body {
+                padding: 1.5rem 0.5rem 2rem;
+            }
+
+            .header-card {
+                padding: 1.5rem 1.25rem 1.25rem;
+                border-radius: 1rem;
+            }
+
+            h1 {
+                font-size: 1.6rem;
+            }
+        }
+    
+
+
+        @media (max-width: 640px) {
+
+        }
+        .nav-back {
+            position: absolute;
+            top: 1.5rem;
+            left: 1.5rem;
+            display: inline-flex;
+            align-items: center;
+            width: fit-content;
+            text-decoration: none;
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            color: var(--text-muted, #94a3b8);
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color, rgba(255,255,255,0.1));
+            transition: all 0.2s;
+            font-size: 0.85rem;
+            font-family: 'Inter', sans-serif;
+            z-index: 1000;
+        }
+        .nav-back:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+            transform: translateY(-1px);
+        }
+        @media (max-width: 640px) {
+            .nav-back {
+                top: 1rem;
+                left: 1rem;
+                padding: 0.4rem 0.8rem;
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    
+
+
+    <a href="/" id="backBtn" class="nav-back">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:0.5rem;"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+            <span id="backBtnText">Back to Dashboard</span>
+        </a>
+
+    <div class="bg-blobs" aria-hidden="true">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+    </div>
+
+    <div class="page-wrap">
+        <div style="text-align: center; margin-bottom: 2rem; padding-top: 5rem;">
+            <div class="badge">Leaderboards</div>
+            <h1>Select a Question</h1>
+            <p class="subtitle">Choose an assignment question to view its live leaderboard</p>
+        </div>
+
+        <div class="questions-grid" id="questions-container">
+            <div class="loader">Loading available questions...</div>
+        </div>
+
+        
+
+    </div>
+
+    <script>
+        async function fetchQuestions() {
+            const container = document.getElementById('questions-container');
+            try {
+                const res = await fetch('/api/questions');
+                if (!res.ok) {
+                    const err = new Error(`HTTP ${res.status}`);
+                    err.status = res.status;
+                    throw err;
+                }
+                const data = await res.json();
+
+                container.innerHTML = '';
+
+                if (Array.isArray(data) && data.length > 0) {
+                    data.forEach(qno => {
+                        const a = document.createElement('a');
+                        a.href = `/leaderboard/${qno}`;
+                        a.className = 'question-card';
+                        a.innerHTML = `
+                            <div class="question-title">${qno}</div>
+                            <div class="question-subtitle">View Leaderboard &rarr;</div>
+                        `;
+                        container.appendChild(a);
+                    });
+                } else {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            No questions or submissions found yet!
+                        </div>`;
+                }
+            } catch (err) {
+                console.error(err);
+                if (err.status === 403) {
+                    container.innerHTML = `
+                        <div class="empty-state" style="text-align:center;">
+                            <div style="color:#fbbf24; font-weight:700; font-size:1.1rem; margin-bottom:0.5rem;">
+                                <span style="display:inline-block;width:8px;height:8px;background:#fbbf24;border-radius:50%;margin-right:6px;animation:pulse 1.5s ease-in-out infinite;vertical-align:middle;"></span>
+                                Waiting for the instructor to start the session.
+                            </div>
+                            <div style="color:#94a3b8; font-size:0.85rem;">
+                                This page will refresh on its own, no need to reload.
+                            </div>
+                        </div>`;
+                    // Auto-refresh when server opens
+                    setInterval(function () {
+                        fetch('/api/server-status')
+                            .then(function (r) { return r.json(); })
+                            .then(function (d) { if (d.is_open) window.location.reload(); })
+                            .catch(function () { });
+                    }, 5000);
+                } else {
+                    container.innerHTML = `
+                        <div class="empty-state" style="color: #fca5a5;">
+                            ❌ Failed to load questions.
+                        </div>`;
+                }
+            }
+        }
+
+        fetchQuestions();
+
+        // Check if user is connecting from localhost using server API
+        fetch('/api/is-admin').then(res => res.json()).then(data => {
+            if (data.is_admin) {
+                const b = document.getElementById('backBtn');
+                if (b) if(b) b.href = '/admin'; const span = document.getElementById('backBtnText'); if(span) span.innerText = 'Back to Admin Panel';
+            } else {
+                document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
+            }
+        }).catch(() => {
+            document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
+        });
+    </script>
+</body>
+
+</html>

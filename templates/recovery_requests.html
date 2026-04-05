@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recovery Requests</title>
+    <link rel="stylesheet" href="/assets/fonts/fonts.css">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --surface-color: #1e293b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent: #3b82f6;
+            --border-color: #334155;
+            --success: #10b981;
+            --danger: #ef4444;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2rem;
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: absolute;
+            top: -20%; left: -10%;
+            width: 70%; height: 70%;
+            background: radial-gradient(circle, rgba(16, 185, 129, 0.1) 0%, transparent 60%);
+            z-index: -1;
+            filter: blur(80px);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 2rem;
+            padding-top: 3rem;
+        }
+
+        h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2.2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(to right, #34d399, #10b981);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        p.subtitle { color: var(--text-muted); font-size: 1.1rem; }
+
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            background: rgba(30, 41, 59, 0.4);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 2rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+        }
+
+        .stats-badge {
+            background: var(--surface-color);
+            border: 1px solid var(--border-color);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .stats-badge span { color: var(--success); }
+        
+        .table-wrapper {
+            width: 100%;
+            overflow-x: auto;
+            border-radius: 8px;
+            background: rgba(15, 23, 42, 0.3);
+            border: 1px solid var(--border-color);
+        }
+
+        .request-table {
+            width: 100%;
+            min-width: 850px;
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+
+        .request-table th {
+            background: var(--surface-color);
+            padding: 0.75rem 1rem;
+            text-align: left;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .request-table th:first-child { border-radius: 8px 0 0 0; }
+        .request-table th:last-child { border-radius: 0 8px 0 0; }
+
+        .request-table td {
+            padding: 0.9rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+            vertical-align: middle;
+        }
+
+        .request-table tr:last-child td { border-bottom: none; }
+
+        .request-table tbody tr {
+            transition: background 0.15s;
+        }
+
+        .request-table tbody tr:hover {
+            background: rgba(30, 41, 59, 0.7);
+        }
+
+        .roll {
+            font-family: 'Outfit', sans-serif;
+            font-weight: 700;
+            color: var(--accent);
+            font-size: 1.05rem;
+        }
+
+        .qno-badge {
+            display: inline-block;
+            padding: 0.25rem 0.6rem;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            background: rgba(59, 130, 246, 0.15);
+            color: #93c5fd;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+
+        .btn-approve, .btn-reject {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            padding: 0.4rem 0.85rem;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: 'Inter', sans-serif;
+            border: 1px solid transparent;
+        }
+
+        .btn-approve {
+            background: rgba(16, 185, 129, 0.15);
+            color: #34d399;
+            border-color: rgba(16, 185, 129, 0.35);
+        }
+
+        .btn-approve:hover {
+            background: rgba(16, 185, 129, 0.3);
+            border-color: var(--success);
+        }
+
+        .btn-reject {
+            background: rgba(239, 68, 68, 0.12);
+            color: #f87171;
+            border-color: rgba(239, 68, 68, 0.35);
+        }
+
+        .btn-reject:hover {
+            background: rgba(239, 68, 68, 0.25);
+            border-color: var(--danger);
+        }
+
+        .ip-badge {
+            background: rgba(15, 23, 42, 0.6);
+            padding: 0.25rem 0.55rem;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 0.88rem;
+            color: var(--text-muted);
+            border: 1px solid var(--border-color);
+        }
+
+        .actions-cell {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: var(--text-muted);
+        }
+
+        .empty-state h3 { margin-top: 0.5rem; }
+
+        #loading {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-muted);
+            font-size: 1.1rem;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 2rem; right: 2rem;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 10px;
+            padding: 0.85rem 1.25rem;
+            color: var(--text-main);
+            font-size: 0.9rem;
+            font-weight: 500;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+            transform: translateY(20px);
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+            z-index: 999;
+            max-width: 380px;
+        }
+
+        .toast.show { opacity: 1; transform: translateY(0); }
+        .toast.success { border-color: rgba(16, 185, 129, 0.4); color: #34d399; }
+        .toast.error { border-color: rgba(239, 68, 68, 0.4); color: #f87171; }
+
+        .footer-note {
+            margin-top: 3rem;
+            display: flex; align-items: center; justify-content: center;
+            gap: 0.6rem; flex-wrap: wrap;
+            font-size: 0.82rem; color: #64748b;
+            padding-bottom: 2rem;
+        }
+
+        .footer-note a {
+            text-decoration: none; font-weight: 500;
+            padding: 0.45rem 1rem; border-radius: 999px;
+            color: #a5b4fc;
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.15);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            display: inline-block;
+        }
+
+        .footer-note a:hover {
+            background: rgba(99, 102, 241, 0.2);
+            border-color: rgba(99, 102, 241, 0.4);
+            color: #c7d2fe;
+            transform: translateY(-2px);
+        }
+
+        .nav-back {
+            position: absolute; top: 1.5rem; left: 1.5rem;
+            display: inline-flex; align-items: center; width: fit-content;
+            text-decoration: none; font-weight: 500;
+            padding: 0.5rem 1rem; border-radius: 8px;
+            color: var(--text-muted);
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            transition: all 0.2s;
+            font-size: 0.85rem;
+            font-family: 'Inter', sans-serif;
+            z-index: 1000;
+        }
+        .nav-back:hover { background: rgba(255, 255, 255, 0.08); color: #fff; transform: translateY(-1px); }
+
+        @media (max-width: 640px) {
+            body { padding: 1rem 0.5rem; }
+            .header { margin-top: 2.5rem; }
+            h1 { font-size: 1.8rem; }
+            .container { padding: 1rem; border-radius: 12px; }
+            .nav-back { top: 1rem; left: 1rem; padding: 0.4rem 0.8rem; font-size: 0.8rem; }
+            .controls { flex-direction: column; align-items: stretch; }
+        }
+    </style>
+</head>
+
+<body>
+    <a href="/admin" id="backBtn" class="nav-back">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:0.5rem;">
+            <line x1="19" y1="12" x2="5" y2="12"></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+        </svg>
+        <span>Back to Admin Panel</span>
+    </a>
+
+    <div class="header">
+        <h1>Recovery Requests</h1>
+        <p class="subtitle">Approve or reject student code recovery requests</p>
+    </div>
+
+    <div class="container">
+        <div class="controls">
+            <div id="stats" class="stats-badge">Pending Requests: <span>0</span></div>
+        </div>
+
+        <div id="grid">
+            <div id="loading">Loading requests...</div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script>
+        function showToast(msg, type = 'success') {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.className = `toast show ${type}`;
+            setTimeout(() => { t.className = 'toast'; }, 4000);
+        }
+
+        async function approveRequest(roll, qno) {
+            try {
+                const res = await fetch(`/admin/approve-recovery?roll=${encodeURIComponent(roll)}&qno=${encodeURIComponent(qno)}`, { method: 'POST' });
+                const data = await res.json();
+                if (res.ok) {
+                    showToast(`Approved ${roll} for ${qno}`, 'success');
+                } else {
+                    showToast(data.message || 'Error', 'error');
+                }
+                fetchRequests();
+            } catch (e) {
+                showToast('Error: ' + e.message, 'error');
+            }
+        }
+
+        async function rejectRequest(roll, qno) {
+            try {
+                const res = await fetch(`/admin/reject-recovery?roll=${encodeURIComponent(roll)}&qno=${encodeURIComponent(qno)}`, { method: 'POST' });
+                const data = await res.json();
+                if (res.ok) {
+                    showToast(`Rejected ${roll} for ${qno}`, 'success');
+                } else {
+                    showToast(data.message || 'Error', 'error');
+                }
+                fetchRequests();
+            } catch (e) {
+                showToast('Error: ' + e.message, 'error');
+            }
+        }
+
+        let lastDataJSON = '';
+
+        async function fetchRequests() {
+            try {
+                const response = await fetch('/api/recovery-requests');
+                const data = await response.json();
+                
+                // Only update if data has changed to prevent scroll reset
+                const currentJSON = JSON.stringify(data);
+                if (currentJSON === lastDataJSON) return;
+                lastDataJSON = currentJSON;
+
+                const pending = data.requests || [];
+
+                document.getElementById('stats').innerHTML =
+                    `Pending Requests: <span>${pending.length}</span>`;
+
+                const grid = document.getElementById('grid');
+
+                if (pending.length === 0) {
+                    grid.innerHTML = `
+                        <div class="empty-state">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 1rem; opacity: 0.5;">
+                                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                            </svg>
+                            <h3>No Pending Requests</h3>
+                            <p style="margin-top: 0.5rem;">All clear! Students will appear here when they request code recovery.</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                grid.innerHTML = `
+                    <div class="table-wrapper">
+                        <table class="request-table">
+                            <thead>
+                                <tr>
+                                    <th>Roll No</th>
+                                    <th>Question</th>
+                                    <th>IP Address</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${pending.map(r => `
+                                    <tr>
+                                        <td><span class="roll">${r.roll}</span></td>
+                                        <td><span class="qno-badge">${r.qno}</span></td>
+                                        <td><span class="ip-badge">${r.ip || '-'}</span></td>
+                                        <td>
+                                            <div class="actions-cell">
+                                                <button class="btn-approve" onclick="approveRequest('${r.roll}', '${r.qno}')">✓ Approve</button>
+                                                <button class="btn-reject" onclick="rejectRequest('${r.roll}', '${r.qno}')">✕ Reject</button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            } catch (err) {
+                document.getElementById('grid').innerHTML =
+                    `<div id="loading" style="color: var(--danger);">Failed to fetch data: ${err.message}</div>`;
+            }
+        }
+
+        fetchRequests();
+        setInterval(fetchRequests, 3000);
+    </script>
+</body>
+
+</html>

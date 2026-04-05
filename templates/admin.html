@@ -1,0 +1,1451 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Server Web Admin Dashboard</title>
+    <link rel="stylesheet" href="/assets/fonts/fonts.css">
+    <style>
+        :root {
+            --bg-color: #0c0e12;
+            --surface-color: rgba(20, 24, 32, 0.85);
+            --surface-hover: rgba(30, 36, 48, 0.9);
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-color: rgba(255, 255, 255, 0.08);
+            --card-radius: 12px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            background-image: radial-gradient(circle at top right, rgba(59, 130, 246, 0.08), transparent 30%),
+                radial-gradient(circle at bottom left, rgba(16, 185, 129, 0.05), transparent 30%);
+            background-attachment: fixed;
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        .container {
+            width: 100%;
+            margin: 0 auto;
+            min-height: 100vh;
+            padding: 0.5rem 1.5rem;
+            animation: fadeIn 0.4s ease-out;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .rule-badge {
+            display: inline-block;
+            background: rgba(59, 130, 246, 0.1);
+            color: #60a5fa;
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            padding: 0.3rem 0.6rem;
+            border-radius: 6px;
+            font-family: ui-monospace, monospace;
+            font-size: 0.8rem;
+            margin: 0.2rem;
+            transition: all 0.2s;
+        }
+
+        .rule-badge:hover {
+            background: rgba(59, 130, 246, 0.2);
+            transform: translateY(-1px);
+        }
+
+        .active-rules-container {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .active-rules-container h4 {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 0.75rem;
+            letter-spacing: 0.05em;
+            font-weight: 600;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+            padding-bottom: 0.35rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .header h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .badge {
+            padding: 4px 10px;
+            background: rgba(59, 130, 246, 0.1);
+            color: #60a5fa;
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            border-radius: 20px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        #globalAccessStatus {
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.8rem;
+            letter-spacing: 0.5px;
+            background: var(--surface-color);
+            border: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        /* Fix placeholder capitalization */
+        input::placeholder {
+            text-transform: none !important;
+            font-weight: normal !important;
+        }
+
+        /* Grid */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 0.75rem;
+            flex: 1;
+            min-height: 0;
+            padding-bottom: 0.5rem;
+        }
+
+        /* Responsive Layouts */
+        @media (min-width: 1024px) {
+            body {
+                height: 100vh;
+                overflow: hidden;
+            }
+
+            .container {
+                height: 100vh;
+                overflow: hidden;
+                padding: 1.25rem 1.75rem !important;
+            }
+
+            .grid {
+                grid-template-columns: repeat(3, 1fr);
+                overflow-y: auto;
+                padding-right: 0.75rem;
+                margin-right: -0.75rem;
+                /* Hide scrollbar by default, show on hover or use custom style */
+                scrollbar-width: thin;
+                scrollbar-color: rgba(255, 255, 255, 0.05) transparent;
+            }
+
+            .grid::-webkit-scrollbar {
+                width: 6px;
+            }
+
+            .grid::-webkit-scrollbar-track {
+                background: transparent;
+            }
+
+            .grid::-webkit-scrollbar-thumb {
+                background: rgba(255, 255, 255, 0.05);
+                border-radius: 10px;
+            }
+
+            .grid:hover::-webkit-scrollbar-thumb {
+                background: rgba(255, 255, 255, 0.1);
+            }
+
+            .card-span-2 {
+                grid-column: span 2;
+            }
+
+            .card-span-3 {
+                grid-column: span 3;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            .header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            #globalAccessStatus {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .flex-responsive {
+                flex-direction: column;
+            }
+
+            .divider-left {
+                border-left: none !important;
+                border-top: 1px solid var(--border-color);
+                padding-left: 0 !important;
+                padding-top: 1.5rem !important;
+            }
+        }
+
+        /* Cards */
+        .card {
+            background: var(--surface-color);
+            border: 1px solid var(--border-color);
+            border-radius: var(--card-radius);
+            padding: 0.85rem 1rem;
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.2s, box-shadow 0.2s;
+            position: relative;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: var(--border-color);
+        }
+
+        .card.global::before {
+            background: var(--success);
+        }
+
+        .card.manual::before {
+            background: var(--primary);
+        }
+
+        .card.danger::before {
+            background: var(--danger);
+        }
+
+        .card.warning::before {
+            background: var(--warning);
+        }
+
+        .card h2 {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-main);
+            margin-bottom: 0.15rem;
+        }
+
+        .card p.hint {
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            margin-bottom: 0.5rem;
+        }
+
+        /* Inputs */
+        input[type="text"] {
+            width: 100%;
+            padding: 0.7rem 1rem;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-main);
+            font-family: inherit;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+        }
+
+        select.dark-select {
+            width: 100%;
+            padding: 0.7rem 1rem;
+            background: #1a1f2e;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-main);
+            font-family: inherit;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        select.dark-select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+        }
+
+        select.dark-select option {
+            background: #1a1f2e;
+            color: #e2e8f0;
+        }
+
+        .input-row {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-top: auto;
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: all 0.2s;
+            font-family: inherit;
+            width: 100%;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: #fff;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-hover);
+            transform: translateY(-1px);
+        }
+
+        .btn-danger {
+            background: rgba(239, 68, 68, 0.1);
+            border-color: rgba(239, 68, 68, 0.2);
+            color: #f87171;
+        }
+
+        .btn-danger:hover {
+            background: rgba(239, 68, 68, 0.2);
+            transform: translateY(-1px);
+        }
+
+        .btn-success {
+            background: rgba(16, 185, 129, 0.1);
+            border-color: rgba(16, 185, 129, 0.2);
+            color: #34d399;
+        }
+
+        .btn-success:hover {
+            background: rgba(16, 185, 129, 0.2);
+            transform: translateY(-1px);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .flex-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-top: auto;
+        }
+
+        /* Inputs */
+        input[type="text"] {
+            width: 100%;
+            padding: 0.65rem 1rem;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1.5px solid rgba(255, 255, 255, 0.18);
+            border-radius: 8px;
+            color: var(--text-main);
+            font-family: 'Inter', sans-serif;
+            font-size: 0.85rem;
+            outline: none;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+        }
+
+        input[type="text"]:focus {
+            border-color: #818cf8;
+            background: rgba(15, 23, 42, 0.8);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2), inset 0 1px 3px rgba(0, 0, 0, 0.2);
+        }
+
+        input::placeholder {
+            color: #64748b;
+            opacity: 1;
+            font-weight: normal !important;
+            font-size: 0.75rem;
+        }
+
+        .input-row {
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+            align-items: stretch;
+        }
+
+        .input-row input {
+            width: 100%;
+        }
+
+        .input-row .btn {
+            width: 100%;
+            padding: 0.75rem;
+            font-weight: 600;
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.5rem 1rem;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            border: 1px solid;
+            transition: all 0.2s;
+            font-family: 'Inter', sans-serif;
+            width: 100%;
+            height: 38px;
+        }
+
+        .card>.btn,
+        .card>.btn-row,
+        .card>.quick-links {
+            margin-top: auto;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%);
+            color: #fff;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(99, 102, 241, 0.4);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ef4444 0%, #f87171 100%);
+            color: #fff;
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+        }
+
+        .btn-danger:hover {
+            background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(239, 68, 68, 0.4);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
+            color: #fff;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        }
+
+        .btn-success:hover {
+            background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(16, 185, 129, 0.4);
+        }
+
+        .btn-warning {
+            background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
+            color: #1e293b;
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+            font-weight: 700;
+        }
+
+        .btn-warning:hover {
+            background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(245, 158, 11, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .btn-row .btn {
+            width: auto;
+            flex: 1;
+        }
+
+        /* Status */
+        #statusMessage {
+            padding: 0.75rem;
+            border-radius: 8px;
+            font-weight: 500;
+            font-size: 0.85rem;
+            display: none;
+            margin-bottom: 1.5rem;
+            animation: fadeIn 0.3s ease-out;
+            text-align: center;
+        }
+
+        .status-success {
+            background: rgba(16, 185, 129, 0.1);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+
+        .status-error {
+            background: rgba(239, 68, 68, 0.1);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.2);
+        }
+
+        /* Dashboards Dash */
+        .dashboard-links {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }
+
+        .dashboard-link {
+            padding: 0.85rem 1rem;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 0.85rem;
+            text-decoration: none;
+            color: #fff;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.03);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            position: relative;
+        }
+
+        /* Unique Gradients for Dashboard Links */
+        .dashboard-link.leaderboard {
+            background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
+            box-shadow: 0 4px 15px rgba(245, 158, 11, 0.2);
+        }
+
+        .dashboard-link.submissions {
+            background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.2);
+        }
+
+        .dashboard-link.violations {
+            background: linear-gradient(135deg, #ec4899 0%, #f472b6 100%);
+            box-shadow: 0 4px 15px rgba(236, 72, 153, 0.2);
+        }
+
+        .dashboard-link.sysmap {
+            background: linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%);
+            box-shadow: 0 4px 15px rgba(139, 92, 246, 0.2);
+        }
+
+        .dashboard-link.recovery {
+            background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
+            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.2);
+        }
+
+        .dashboard-link:hover {
+            transform: translateY(-4px) scale(1.02);
+            filter: brightness(1.1);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        .dashboard-link.leaderboard:hover {
+            box-shadow: 0 8px 25px rgba(245, 158, 11, 0.4);
+        }
+
+        .dashboard-link.submissions:hover {
+            box-shadow: 0 8px 25px rgba(59, 130, 246, 0.4);
+        }
+
+        .dashboard-link.violations:hover {
+            box-shadow: 0 8px 25px rgba(236, 72, 153, 0.4);
+        }
+
+        .dashboard-link.sysmap:hover {
+            box-shadow: 0 8px 25px rgba(139, 92, 246, 0.4);
+        }
+
+        .dashboard-link.recovery:hover {
+            box-shadow: 0 8px 25px rgba(16, 185, 129, 0.4);
+        }
+
+        .notif-dot {
+            position: absolute;
+            top: -6px;
+            right: -6px;
+            min-width: 20px;
+            height: 20px;
+            background: #ef4444;
+            border-radius: 999px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: #fff;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 0 5px;
+            box-shadow: 0 2px 8px rgba(239, 68, 68, 0.5);
+            animation: pulse-dot 2s infinite;
+            z-index: 10;
+        }
+
+        @keyframes pulse-dot {
+
+            0%,
+            100% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.15);
+            }
+        }
+
+        /* Status Indicator Light */
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+            vertical-align: middle;
+            background-color: #cbd5e1;
+            /* Default grayish-white */
+            box-shadow: 0 0 8px rgba(203, 213, 225, 0.4);
+        }
+
+        .status-indicator.live {
+            background-color: #34d399;
+            box-shadow: 0 0 10px rgba(52, 211, 153, 0.6);
+        }
+
+        .status-indicator.partial {
+            background-color: #fbbf24;
+            box-shadow: 0 0 10px rgba(251, 191, 36, 0.6);
+        }
+
+        .status-indicator.closed {
+            background-color: #f87171;
+            box-shadow: 0 0 10px rgba(248, 113, 113, 0.6);
+        }
+
+        .blink {
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.4;
+                transform: scale(0.9);
+            }
+
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .nav-back {
+            position: absolute;
+            top: 1.5rem;
+            left: 1.5rem;
+            display: inline-flex;
+            align-items: center;
+            width: fit-content;
+            text-decoration: none;
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            color: var(--text-muted, #94a3b8);
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+            transition: all 0.2s;
+            font-size: 0.85rem;
+            font-family: 'Inter', sans-serif;
+            z-index: 1000;
+        }
+
+        .nav-back:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+            transform: translateY(-1px);
+        }
+
+        @media (max-width: 640px) {
+            .nav-back {
+                top: 1rem;
+                left: 1rem;
+                padding: 0.4rem 0.8rem;
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+
+        <div class="header">
+            <div class="header-left">
+                <h1>Server Access Control</h1>
+                <div style="display: flex; gap: 0.75rem; align-items: center; margin-left: 0.5rem;">
+                    <span class="badge">Admin</span>
+                    {% if course_name and lab_name %}
+                    <span class="badge"
+                        style="background: rgba(56, 189, 248, 0.1); color: var(--accent); border-color: rgba(56, 189, 248, 0.3);">{{
+                        course_name }} - {{ lab_name }}</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div id="globalAccessStatus">Checking...</div>
+        </div>
+
+        <div id="statusMessage"></div>
+
+        <!-- Top Navigation -->
+        <div class="dashboard-links" style="margin-top: 0; margin-bottom: 0.75rem;">
+            <a href="/leaderboard" target="_blank" class="dashboard-link leaderboard">Leaderboard</a>
+            <a href="/status" target="_blank" class="dashboard-link submissions">Submissions</a>
+            <a href="/violations" target="_blank" class="dashboard-link violations" id="violationsLink"
+                onclick="dismissNotif('violations')">Violations<span class="notif-dot" id="violationsDot">0</span></a>
+            <a href="/system-access" target="_blank" class="dashboard-link sysmap">System Map</a>
+            <a href="/admin/recovery-requests" target="_blank" class="dashboard-link recovery" id="recoveryLink"
+                onclick="dismissNotif('recovery')">Recovery<span class="notif-dot" id="recoveryDot">0</span></a>
+        </div>
+
+        <!-- Main Grid -->
+        <div class="grid">
+            <!-- Global Access -->
+            <div class="card global">
+                <h2>Global Access</h2>
+                <p class="hint">Control server visibility for the entire lab network instantly.</p>
+                <div class="flex-actions">
+                    <button class="btn btn-success" id="grantAllBtn" onclick="grantAll()">Open Access to ALL</button>
+                    <button class="btn btn-danger" id="revokeAllBtn" onclick="revokeAll()">Revoke ALL Access</button>
+                </div>
+            </div>
+
+            <!-- Manual Override -->
+            <div class="card manual card-span-2">
+                <div class="flex-responsive" style="display:flex; gap:2rem; height:100%;">
+                    <div style="flex: 1; display:flex; flex-direction:column;">
+                        <h2>Manual Access</h2>
+                        <p class="hint">Whitelist specific PC IP addresses or subnets.</p>
+                        <div class="input-row">
+                            <div style="display: flex; gap: 0.5rem; align-items: center; width: 100%;">
+                                <select id="subnetSelect" class="dark-select" style="flex: 2;"
+                                    onchange="toggleManualIpInput()">
+                                    <option value="">Loading...</option>
+                                </select>
+                                <span id="subnetDotTag"
+                                    style="color: var(--text-muted); font-weight: bold; font-size: 1.2rem;">.</span>
+                                <input type="text" id="ipSuffixInput" placeholder="Last octet"
+                                    style="flex: 1; text-align: center; letter-spacing: 1px; font-weight: 600;"
+                                    autocomplete="off" spellcheck="false"
+                                    onkeypress="if(event.key === 'Enter') grantMultiple()"
+                                    oninput="this.value = this.value.replace(/[^0-9a-fA-F:*,.\s]/g, '')">
+                            </div>
+                            <button class="btn btn-primary" id="grantSingleBtn" onclick="grantMultiple()">Grant
+                                Access</button>
+                        </div>
+                    </div>
+                    <div class="divider-left"
+                        style="flex: 1; display:flex; flex-direction:column; padding-left:2rem; border-left:1px solid var(--border-color);">
+                        <h4
+                            style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.25rem; font-weight: 600;">
+                            Active Access Rules
+                        </h4>
+                        <p style="font-size: 0.65rem; color: var(--text-muted); margin-bottom: 0.75rem; opacity: 0.8;">
+                            (Click a rule to revoke)</p>
+                        <div id="activeRulesList"
+                            style="flex: 1; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 0.25rem;">
+                            <span style="color: var(--text-muted); font-size: 0.8rem; font-style: italic;">No active
+                                rules.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PC Unlink -->
+            <div class="card warning">
+                <h2>PC Unlink</h2>
+                <p class="hint">Clear IP lock for a student so they can login from another PC.</p>
+                <div class="input-row">
+                    <input type="text" id="rollInput" placeholder="Enter full roll or last 3 digits for suggestions"
+                        style="text-transform: uppercase; letter-spacing: 1px; font-weight: 600;"
+                        autocomplete="roll-number" spellcheck="false"
+                        onkeypress="if(event.key === 'Enter') deleteRegistration()">
+                    <button class="btn btn-danger" id="regDeleteBtn" onclick="deleteRegistration()">Unlink PC</button>
+                </div>
+            </div>
+
+            <!-- Delete Submissions -->
+            <div class="card danger">
+                <h2>Delete Submission Data</h2>
+                <p class="hint">Remove specific student code files. Cannot be undone.</p>
+                <div class="input-row">
+                    <input type="text" id="delRollInput" placeholder="Enter full roll or last 3 digits for suggestions"
+                        style="text-transform: uppercase; letter-spacing: 1px; font-weight: 600;"
+                        autocomplete="roll-number" spellcheck="false">
+                    <input type="text" id="deleteQnoInput" placeholder="Question No (Optional)" autocomplete="off"
+                        spellcheck="false">
+                    <button class="btn btn-danger" id="deleteBtn" onclick="deleteSubmission()">Delete Data</button>
+                </div>
+            </div>
+
+            <!-- Archive -->
+            <div class="card global">
+                <h2>Lab Archive</h2>
+                <p class="hint">Export all submissions and grades as a ZIP file.</p>
+                <div class="flex-actions">
+                    <button class="btn btn-success" onclick="window.location.href='/admin/download_submissions'">
+                        Generate Archive
+                    </button>
+                </div>
+            </div>
+
+            <!-- Plagiarism Check -->
+            <div class="card warning card-span-3">
+                <h2>Plagiarism Check</h2>
+                <p class="hint">Check for code similarity across all submissions using Stanford MOSS.</p>
+
+
+                <div class="input-row" style="flex-direction: row; align-items: flex-end; gap: 0.75rem;">
+                    <div style="flex: 0.4;">
+                        <label
+                            style="font-size: 0.7rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Question</label>
+                        <input type="text" id="mossQnoInput" class="search-input" placeholder="e.g. Q1, All"
+                            autocomplete="off" spellcheck="false" style="width: 100%;">
+                    </div>
+                    <div style="flex: 0.6;">
+                        <label
+                            style="font-size: 0.7rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">MOSS
+                            ID</label>
+                        <input type="text" id="mossIdInput" class="search-input" placeholder="e.g. 123456789"
+                            style="width: 100%;">
+                    </div>
+                    <button class="btn btn-warning" id="mossBtn" onclick="runMoss()" style="flex: 0.4; width:auto;">Run
+                        MOSS</button>
+                </div>
+
+                <!-- Colab fallback & Import (hidden until MOSS fails) -->
+                <div id="mossFallback" style="display: none; margin-top: 0.75rem; padding: 0.75rem; border-radius: 8px; background: rgba(251, 191, 36, 0.05); border: 1px dashed rgba(251, 191, 36, 0.3);">
+                    <p style="font-size: 0.75rem; color: #fbbf24; margin-bottom: 0.5rem;">⚠️ Port 7690 appears blocked. Use Google Colab instead:</p>
+                    <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                        <button class="btn btn-warning" onclick="downloadColabNotebook()" style="font-size: 0.75rem; padding: 0.4rem 0.8rem; width: auto; flex-shrink: 0;">Download Notebook</button>
+                        <div style="flex: 1; min-width: 250px; display: flex; gap: 0.5rem; align-items: center;">
+                            <input type="text" id="mossImportUrl" class="search-input" placeholder="Paste report URL from Colab here..." style="width: 100%; font-size: 0.75rem; padding: 0.4rem 0.6rem; margin: 0;">
+                            <button class="btn btn-primary" onclick="importMossUrl()" style="font-size: 0.75rem; padding: 0.4rem 0.8rem; width: auto; flex-shrink: 0; margin: 0;">Import</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="mossHistoryToggle" style="margin-top: 0.5rem; text-align: right;">
+                    <a href="/admin/moss-history-page" target="_blank"
+                        style="font-size: 0.75rem; color: var(--warning); text-decoration: none; opacity: 0.8; font-weight: 600;">View
+                        Full History &rarr;</a>
+                </div>
+            </div>
+
+
+
+        </div>
+
+    </div>
+    </div>
+
+    <datalist id="studentList"></datalist>
+
+    <script>
+        let statusTimeout, fadeTimeout;
+
+        function showStatus(message, isError = false, timeout = 3000) {
+            const el = document.getElementById('statusMessage');
+            clearTimeout(statusTimeout); clearTimeout(fadeTimeout);
+            el.style.display = 'block';
+            el.className = `show ${isError ? 'status-error' : 'status-success'}`;
+            el.innerHTML = isError ? `Error: ${message}` : message;
+            statusTimeout = setTimeout(() => {
+                el.style.opacity = '0';
+                fadeTimeout = setTimeout(() => { el.style.display = 'none'; el.className = ''; el.style.opacity = '1'; }, 300);
+            }, timeout);
+        }
+
+
+        function toggleManualIpInput() {
+            const subnet = document.getElementById('subnetSelect').value;
+            const dot = document.getElementById('subnetDotTag');
+            const input = document.getElementById('ipSuffixInput');
+
+            // Revert to standard behavior as 'other' option is removed
+            dot.style.display = 'inline';
+            input.placeholder = 'Last octet (e.g. 71 or *)';
+            input.style.flex = '1';
+        }
+
+        async function grantMultiple() {
+            console.log("grantMultiple triggered");
+            const subnet = document.getElementById('subnetSelect').value;
+            const suffixInput = document.getElementById('ipSuffixInput');
+            const rawSuffix = suffixInput.value.trim().toUpperCase();
+
+            if (!subnet) { showStatus("Select a subnet prefix first.", true); return; }
+            if (!rawSuffix) { showStatus("Enter at least one suffix or IP.", true); suffixInput.focus(); return; }
+
+            // Allow multiple comma-separated suffixes
+            const suffixes = rawSuffix.split(',').map(r => r.trim()).filter(r => r.length > 0);
+            const systems = suffixes.map(s => `${subnet}.${s}`);
+            const btn = document.getElementById('grantSingleBtn');
+            btn.innerHTML = 'Processing...'; btn.disabled = true;
+
+            const results = [];
+            for (let sys of systems) {
+                try {
+                    const res = await fetch(`/admin/grant_system?system=${encodeURIComponent(sys)}`, { method: 'POST' });
+                    const data = await res.json();
+                    results.push(`${sys}: ${data.status === 'Already authorized' ? 'Already' : 'Granted'}`);
+                } catch (e) { results.push(`${sys}: Error`); }
+            }
+            showStatus(results.join(' | '));
+            suffixInput.value = ''; btn.innerHTML = 'Grant Access'; btn.disabled = false;
+            checkOpenAccessStatus();
+        }
+
+        async function deleteSubmission() {
+            console.log("deleteSubmission triggered");
+            const rollInput = document.getElementById('delRollInput');
+            const roll = rollInput.value.trim().toUpperCase();
+            const qnoInput = document.getElementById('deleteQnoInput');
+            if (!roll || roll.length < 4) { showStatus("Enter a valid roll number.", true); rollInput.focus(); return; }
+
+            const qno = qnoInput ? qnoInput.value.trim().toUpperCase() : "";
+            const scope = qno ? `for ${qno}` : `ACROSS ALL QUESTIONS`;
+            if (!confirm(`Delete submissions for ${roll} ${scope}? Cannot be undone. Rankings will update automatically.`)) return;
+
+            const btn = document.getElementById('deleteBtn');
+            btn.innerHTML = 'Deleting...'; btn.disabled = true;
+            try {
+                let url = `/admin/delete_submission?roll=${encodeURIComponent(roll)}`;
+                if (qno) url += `&qno=${encodeURIComponent(qno)}`;
+                const res = await fetch(url, { method: 'POST' });
+                const data = await res.json();
+                showStatus(data.status); rollInput.value = ''; if (qnoInput) qnoInput.value = '';
+                rollInput.focus();
+            } catch (e) { showStatus(`Error: ${e.message}`, true); }
+            btn.innerHTML = 'Delete'; btn.disabled = false;
+        }
+
+        async function deleteRegistration() {
+            console.log("deleteRegistration triggered");
+            const rollInput = document.getElementById('rollInput');
+            const roll = rollInput.value.trim().toUpperCase();
+            if (!roll || roll.length < 4) { showStatus("Enter a valid roll number.", true); rollInput.focus(); return; }
+            if (!confirm(`Unlink ${roll} from their PC?`)) return;
+
+            const btn = document.getElementById('regDeleteBtn');
+            btn.innerHTML = '...'; btn.disabled = true;
+            try {
+                const res = await fetch(`/admin/delete_registration?roll=${encodeURIComponent(roll)}`, { method: 'POST' });
+                const data = await res.json();
+                showStatus(data.status); rollInput.value = '';
+                rollInput.focus();
+            } catch (e) { showStatus(`Error: ${e.message}`, true); }
+            btn.innerHTML = 'Unlink PC'; btn.disabled = false;
+        }
+
+        async function clearAllRegistrations() {
+            if (!confirm('Clear ALL registrations?')) return;
+            if (!confirm('Are you absolutely sure?')) return;
+
+            const btn = document.getElementById('regClearAllBtn');
+            btn.innerHTML = '...'; btn.disabled = true;
+            try {
+                const res = await fetch('/admin/delete_registration?clear_all=true', { method: 'POST' });
+                const data = await res.json();
+                showStatus(data.status);
+            } catch (e) { showStatus(`Error: ${e.message}`, true); }
+            btn.innerHTML = 'Clear All'; btn.disabled = false;
+        }
+
+        async function revokeAll() {
+            const btn = document.getElementById('revokeAllBtn');
+            if (!btn.classList.contains('confirm')) {
+                btn.classList.add('confirm');
+                btn.innerHTML = 'Click again to CONFIRM';
+                setTimeout(() => { btn.classList.remove('confirm'); btn.innerHTML = 'Revoke ALL Access'; }, 4000);
+                return;
+            }
+
+            btn.classList.remove('confirm');
+            btn.innerHTML = 'Revoking...'; btn.disabled = true;
+            try {
+                const res = await fetch('/admin/revoke_system?system=*', { method: 'POST' });
+                const data = await res.json();
+                showStatus(data.status || "All Access Revoked");
+                checkOpenAccessStatus();
+            } catch (e) {
+                showStatus(`Error: ${e.message}`, true);
+            }
+            btn.innerHTML = 'Revoke ALL Access'; btn.disabled = false;
+        }
+
+
+        async function revokeAccess(directSys = null) {
+            let raw = "";
+            let btn = null;
+
+            if (directSys) {
+                raw = directSys;
+            } else {
+                const input = document.getElementById('revokeInput');
+                if (input) raw = input.value.trim().toUpperCase();
+                btn = document.getElementById('revokeBtn');
+            }
+
+            if (!raw) { showStatus("Enter at least one system to revoke.", true); return; }
+
+            if (btn) { btn.innerHTML = 'Revoking...'; btn.disabled = true; }
+            const systems = raw.split(',').map(s => s.trim()).filter(s => s.length > 0);
+            const results = [];
+            for (let sys of systems) {
+                try {
+                    const res = await fetch(`/admin/revoke_system?system=${encodeURIComponent(sys)}`, { method: 'POST' });
+                    const data = await res.json();
+                    if (data.status === 'Revoked') {
+                        results.push(`${sys}: Revoked`);
+                    } else if (data.status === 'Still Authorized') {
+                        results.push(`${data.detail}`);
+                    } else if (data.detail) {
+                        results.push(`${sys}: ${data.detail}`);
+                    } else {
+                        results.push(`${sys}: ${data.status}`);
+                    }
+                } catch (e) { results.push(`${sys}: Error`); }
+            }
+            showStatus(results.join(' | '), !results.every(r => r.includes('Revoked')));
+            setTimeout(checkOpenAccessStatus, 500); // Refresh UI
+            if (btn) { document.getElementById('revokeInput').value = ''; btn.innerHTML = 'Revoke'; btn.disabled = false; }
+        }
+
+        async function grantAll() {
+            const btn = document.getElementById('grantAllBtn');
+            if (!btn.classList.contains('confirm')) {
+                btn.classList.add('confirm');
+                btn.innerHTML = 'Click again to CONFIRM';
+                setTimeout(() => { btn.classList.remove('confirm'); btn.innerHTML = 'Open Access to ALL'; }, 4000);
+                return;
+            }
+            btn.classList.remove('confirm');
+            btn.innerHTML = 'Opening...'; btn.disabled = true;
+            try {
+                await fetch('/admin/grant_system?system=10.21.224.*', { method: 'POST' });
+                const res = await fetch('/admin/grant_system?system=10.21.225.*', { method: 'POST' });
+                const data = await res.json();
+                showStatus(data.status || 'Open to all.');
+            } catch (e) {
+                showStatus(`Error: ${e.message}`, true);
+                btn.innerHTML = 'Open Access to ALL'; btn.disabled = false;
+            }
+            checkOpenAccessStatus();
+        }
+
+        async function checkOpenAccessStatus() {
+            try {
+                const res = await fetch('/api/system-access', { cache: 'no-store' });
+                if (!res.ok) return;
+                const data = await res.json();
+
+
+                // Inject Server IP Badge Dynamically
+                if (data.server_ip) {
+                    const headerLeft = document.querySelector('.header-left');
+                    if (headerLeft && !document.getElementById('serverIpBadge')) {
+                        const ipBadge = document.createElement('span');
+                        ipBadge.id = 'serverIpBadge';
+                        ipBadge.className = 'badge';
+                        ipBadge.style.background = 'rgba(16, 185, 129, 0.15)';
+                        ipBadge.style.color = '#34d399';
+                        ipBadge.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+                        ipBadge.innerHTML = `<svg style="width: 12px; height: 12px; vertical-align: middle; margin-right: 4px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"></path></svg>Server IP: ${data.server_ip}:8000`;
+                        headerLeft.appendChild(ipBadge);
+                    }
+                }
+
+                // Populate dynamic subnet dropdown for manual access UI
+                if (data.lab_subnets) {
+                    const select = document.getElementById('subnetSelect');
+                    if (select && select.options.length <= 2) {
+                        select.innerHTML = '<option value="">Select subnet</option>';
+                        data.lab_subnets.forEach(sub => {
+                            if (sub !== "127.0.0.1") {
+                                select.innerHTML += `<option value="${sub}">${sub}</option>`;
+                            }
+                        });
+                        if (select.options.length > 1) {
+                            select.selectedIndex = 1;
+                        }
+                    }
+                }
+
+                const allowedSystems = data.allowed_systems || [];
+                const btn = document.getElementById('grantAllBtn');
+                const revokeBtn = document.getElementById('revokeAllBtn');
+                const banner = document.getElementById('globalAccessStatus');
+
+
+                const isAllOpen = allowedSystems.includes('10.21.224.*') && allowedSystems.includes('10.21.225.*');
+
+                // 1. Update Global Status
+                const globalStatus = document.getElementById('globalAccessStatus');
+
+                if (isAllOpen) {
+                    globalStatus.innerHTML = '<div class="status-indicator live blink"></div><span class="blink" style="display:inline-block; color:#34d399; font-weight:800; text-shadow:0 0 8px rgba(52,211,153,0.6);">OPEN TO ALL</span>';
+                } else if (allowedSystems.length > 0) {
+                    globalStatus.innerHTML = '<div class="status-indicator partial blink"></div><span class="blink" style="display:inline-block; color:#fbbf24; font-weight:600; text-shadow:0 0 8px rgba(251,191,36,0.4);">PARTIAL / MANUAL ACCESS</span>';
+                } else {
+                    globalStatus.innerHTML = '<div class="status-indicator closed blink"></div><span class="blink" style="display:inline-block; color:#f87171; font-weight:800; text-shadow:0 0 8px rgba(248,113,113,0.6);">CLOSED</span>';
+                }
+
+                // Update grantAllBtn and revokeAllBtn based on status
+                if (!btn.classList.contains('confirm')) {
+                    if (isAllOpen) {
+                        btn.style.background = 'rgba(16, 185, 129, 0.15)';
+                        btn.style.color = '#34d399';
+                        btn.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+                        btn.innerHTML = 'Access is ENABLED';
+                        btn.disabled = true;
+                    } else {
+                        btn.style.background = ''; btn.style.color = ''; btn.style.borderColor = '';
+                        btn.innerHTML = 'Open Access to ALL';
+                        btn.disabled = false;
+                    }
+                }
+                if (revokeBtn && !revokeBtn.classList.contains('confirm')) {
+                    if (allowedSystems.length === 0) {
+                        revokeBtn.disabled = true;
+                        revokeBtn.innerHTML = 'All Revoked';
+                    } else {
+                        revokeBtn.disabled = false;
+                        revokeBtn.innerHTML = 'Revoke ALL Access';
+                    }
+                }
+
+                // 2. Update Active Rules list
+                const rulesContainer = document.getElementById('activeRulesList');
+                if (rulesContainer) {
+                    const renderBadge = (s) => `<span class="rule-badge" style="cursor: pointer; transition: transform 0.1s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'" onclick="if(confirm('Revoke access rule \\'${s}\\'?')){revokeAccess('${s}');}" title="Click to Revoke">${s}</span>`;
+
+                    if (allowedSystems.length === 0) {
+                        rulesContainer.innerHTML = '<span style="color: var(--text-muted); font-size: 0.75rem; font-style: italic;">No active rules</span>';
+                    } else if (allowedSystems.length > 30) {
+                        const firstFew = allowedSystems.slice(0, 10);
+                        const lastFew = allowedSystems.slice(-5);
+                        const hiddenCount = allowedSystems.length - 15;
+
+                        let html = firstFew.map(renderBadge).join('');
+                        html += `<span class="rule-badge" style="background: transparent; border: 1px dashed var(--border-color); color: var(--text-muted); cursor: default;">... ${hiddenCount} more hidden ...</span>`;
+                        html += lastFew.map(renderBadge).join('');
+
+                        rulesContainer.innerHTML = html;
+                    } else {
+                        // Always display all explicitly allowed rules, even if * or subnets exist.
+                        rulesContainer.innerHTML = allowedSystems.map(renderBadge).join('');
+                    }
+                }
+
+
+            } catch (e) { }
+        }
+
+        checkOpenAccessStatus();
+
+        // Load student autocomplete list
+        async function loadRollPrefixes() {
+            const inputs = [document.getElementById('rollInput'), document.getElementById('delRollInput')];
+            inputs.forEach(input => {
+                if (!input) return;
+                input.placeholder = 'Enter full roll or last 3 digits for suggestions';
+                input.value = '';
+
+                // Show datalist suggestions ONLY if they've typed exactly 3 digits
+                input.addEventListener('input', function () {
+                    const enoughChars = /^\d{3}$/.test(this.value.trim());
+                    if (enoughChars) {
+                        this.setAttribute('list', 'studentList');
+                    } else {
+                        this.removeAttribute('list');
+                    }
+                });
+            });
+
+            // Load full student list for autocomplete
+            try {
+                const res2 = await fetch('/api/student-list');
+                if (!res2.ok) return;
+                const data2 = await res2.json();
+                const dl = document.getElementById('studentList');
+                if (dl && data2.students) {
+                    dl.innerHTML = data2.students.map(s => `<option value="${s}">`).join('');
+                }
+            } catch (e) {
+                console.error('Failed to load student list', e);
+            }
+        }
+        loadRollPrefixes();
+
+        async function runMoss() {
+            const qno = document.getElementById('mossQnoInput').value.trim();
+            const mossId = document.getElementById('mossIdInput').value.trim();
+            if (!mossId) {
+                showStatus("MOSS User ID is required", true);
+                document.getElementById('mossIdInput').focus();
+                return;
+            }
+
+            const btn = document.getElementById('mossBtn');
+            const originalText = btn.innerText;
+            btn.innerText = 'Running...';
+            btn.disabled = true;
+            document.getElementById('mossFallback').style.display = 'none';
+
+            try {
+                const res = await fetch('/admin/run-moss', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question: qno, moss_id: mossId })
+                });
+                const data = await res.json();
+
+                if (data.status === "Success") {
+                    if (data.report_url) {
+                        showStatus("MOSS check complete! Opening report...");
+                        window.open(data.report_url, '_blank');
+                    } else {
+                        showStatus(data.message || "MOSS checks completed successfully.");
+                    }
+                } else {
+                    const msg = data.status || data.error || "Error running MOSS";
+                    showStatus(msg, true, 8000);
+                    // Show Colab fallback if it looks like a connection/port issue
+                    if (msg.includes('Port') || msg.includes('timed out') || msg.includes('Connection') || msg.includes('MOSS Error') || res.status === 500) {
+                        document.getElementById('mossFallback').style.display = 'block';
+                    }
+                }
+            } catch (e) {
+                showStatus("Error connecting to server", true, 8000);
+                document.getElementById('mossFallback').style.display = 'block';
+            } finally {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        async function downloadColabNotebook() {
+            const qno = document.getElementById('mossQnoInput').value.trim();
+            const mossId = document.getElementById('mossIdInput').value.trim();
+            if (!mossId) {
+                showStatus("MOSS User ID is required", true);
+                document.getElementById('mossIdInput').focus();
+                return;
+            }
+            showStatus("Generating Colab notebook...");
+            try {
+                const res = await fetch('/admin/moss-colab', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question: qno, moss_id: mossId })
+                });
+                if (!res.ok) {
+                    const err = await res.json();
+                    showStatus(err.status || "Error generating notebook", true);
+                    return;
+                }
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                
+                let filename = "MOSS_Notebook.ipynb";
+                const disposition = res.headers.get('Content-Disposition');
+                if (disposition && disposition.indexOf('filename=') !== -1) {
+                    const filenameMatch = disposition.match(/filename="?([^"]+)"?/);
+                    if (filenameMatch && filenameMatch.length === 2) filename = filenameMatch[1];
+                }
+                
+                a.href = url;
+                a.download = filename;
+                a.click();
+                URL.revokeObjectURL(url);
+                showStatus("Notebook downloaded! Open it in colab.google.com and click Run All.", false, 8000);
+            } catch (e) {
+                showStatus("Error generating notebook", true);
+            }
+        }
+
+        async function importMossUrl() {
+            const urlInput = document.getElementById('mossImportUrl');
+            const url = urlInput.value.trim();
+            const qno = document.getElementById('mossQnoInput').value.trim() || 'Manual';
+            if (!url) {
+                showStatus("Paste a MOSS report URL first", true);
+                urlInput.focus();
+                return;
+            }
+            try {
+                const res = await fetch('/admin/moss-import-url', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: url, question: qno })
+                });
+                const data = await res.json();
+                if (data.status === 'Success') {
+                    showStatus(data.message || 'URL imported to MOSS History.');
+                    urlInput.value = '';
+                } else {
+                    showStatus(data.status || 'Error importing URL', true);
+                }
+            } catch (e) {
+                showStatus('Error importing URL', true);
+            }
+        }
+    </script>
+    <script>
+        // Track seen counts to show dots only for NEW items
+        let currentRecoveryTotal = 0;
+        let currentViolationsTotal = 0;
+
+        function dismissNotif(type) {
+            if (type === 'recovery') {
+                localStorage.setItem('lastSeenRecovery', currentRecoveryTotal);
+                document.getElementById('recoveryDot').style.display = 'none';
+            } else if (type === 'violations') {
+                localStorage.setItem('lastSeenViolations', currentViolationsTotal);
+                document.getElementById('violationsDot').style.display = 'none';
+            }
+        }
+
+        // Poll for pending recovery requests and violations to update notification dots
+        async function pollAdminCounts() {
+            try {
+                // 1. Recovery Requests
+                const recRes = await fetch('/api/recovery-requests');
+                const recData = await recRes.json();
+                currentRecoveryTotal = recData.total_cumulative || 0;
+
+                const recDot = document.getElementById('recoveryDot');
+                if (recDot) {
+                    const lastSeen = parseInt(localStorage.getItem('lastSeenRecovery') || '0');
+                    const newItems = currentRecoveryTotal - lastSeen;
+
+                    if (newItems > 0) {
+                        recDot.textContent = newItems;
+                        recDot.style.display = 'flex';
+                    } else {
+                        recDot.style.display = 'none';
+                    }
+                }
+
+                // 2. Violations
+                const vRes = await fetch('/api/violations-count');
+                const vData = await vRes.json();
+                currentViolationsTotal = vData.count || 0;
+
+                const vDot = document.getElementById('violationsDot');
+                if (vDot) {
+                    let lastSeen = parseInt(localStorage.getItem('lastSeenViolations') || '0');
+
+                    // If count drops (e.g. cleared), reset lastSeen so new ones show up
+                    if (currentViolationsTotal < lastSeen) {
+                        localStorage.setItem('lastSeenViolations', currentViolationsTotal);
+                        lastSeen = currentViolationsTotal;
+                    }
+
+                    const newItems = currentViolationsTotal - lastSeen;
+
+                    if (newItems > 0) {
+                        vDot.textContent = newItems;
+                        vDot.style.display = 'flex';
+                    } else {
+                        vDot.style.display = 'none';
+                    }
+                }
+            } catch (e) { /* silently ignore */ }
+        }
+        pollAdminCounts();
+        setInterval(pollAdminCounts, 5000);
+    </script>
+</body>
+
+</html>

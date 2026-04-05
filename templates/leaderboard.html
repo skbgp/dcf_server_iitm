@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Leaderboard</title>
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            min-height: 100vh;
+            background-color: #0f172a;
+            color: #e2e8f0;
+            font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            padding: 2.5rem 1rem 3rem;
+            font-size: 0.9rem;
+        }
+
+        /* ── Animated gradient background blobs ── */
+        .bg-blobs {
+            position: fixed;
+            inset: 0;
+            overflow: hidden;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .blob {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(120px);
+            opacity: 0.18;
+            animation: drift 18s ease-in-out infinite alternate;
+        }
+
+        .blob-1 {
+            width: 520px;
+            height: 520px;
+            background: #6366f1;
+            top: -120px;
+            left: -120px;
+            animation-delay: 0s;
+        }
+
+        .blob-2 {
+            width: 400px;
+            height: 400px;
+            background: #0ea5e9;
+            bottom: -80px;
+            right: -80px;
+            animation-delay: -6s;
+        }
+
+        /* ── Animations ── */
+        @keyframes drift {
+            0% {
+                transform: translate(0, 0) scale(1);
+            }
+
+            100% {
+                transform: translate(20px, -20px) scale(1.05);
+            }
+        }
+
+        @keyframes pulse-dot {
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.4;
+                transform: scale(0.7);
+            }
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 1.5rem;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+
+        h1 {
+            font-size: 2.25rem;
+            font-weight: 700;
+            color: #FFFFFF;
+            margin: 0;
+        }
+
+        #question-title {
+            font-size: 1.125rem;
+            color: #9CA3AF;
+            margin-top: 0.25rem;
+        }
+
+        .stats-container {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .stat-box {
+            background-color: #1F2937;
+            border-radius: 0.75rem;
+            padding: 1.25rem;
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 0.875rem;
+            color: #9CA3AF;
+            margin: 0 0 0.5rem 0;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .stat-value {
+            font-size: 2.25rem;
+            font-weight: 700;
+            color: #FFFFFF;
+            margin: 0;
+        }
+
+
+        .leaderboard-wrapper {
+            background-color: #1F2937;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            /* shadow-md */
+            overflow: hidden;
+        }
+
+        .table-scroll-wrapper {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            text-align: left;
+            font-size: 0.875rem;
+            border-collapse: collapse;
+        }
+
+        thead {
+            background-color: rgba(55, 65, 81, 0.5);
+            font-size: 0.75rem;
+            color: #9CA3AF;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        th,
+        td {
+            padding: 1rem 1.5rem;
+        }
+
+        tbody tr {
+            border-bottom: 1px solid #374151;
+        }
+
+        tbody tr:hover {
+            background-color: #374151;
+        }
+
+        .rank-cell {
+            font-weight: 500;
+            color: #FFFFFF;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        th:nth-child(2) {
+            text-align: center;
+        }
+
+        th:last-child {
+            text-align: center;
+        }
+
+        .roll-cell {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            color: #D1D5DB;
+            text-align: center;
+        }
+
+        .marks-cell {
+            text-align: center;
+            font-weight: 600;
+            color: #818CF8;
+        }
+
+        .medal-gold {
+            color: #ffd700;
+        }
+
+        .medal-silver {
+            color: #c0c0c0;
+        }
+
+        .medal-bronze {
+            color: #cd7f32;
+        }
+
+        .medal-default {
+            color: #4B5563;
+        }
+
+        .loader {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+        }
+
+        .loader-text {
+            color: #D1D5DB;
+        }
+
+        .spinner {
+            animation: spin 1s linear infinite;
+            margin-right: 0.75rem;
+            height: 1.25rem;
+            width: 1.25rem;
+            color: #818CF8;
+        }
+
+        @keyframes spin {
+            from {
+                transform: rotate(0deg);
+            }
+
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .footer-note {
+            margin-top: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+            font-size: 0.82rem;
+            color: #64748b;
+            padding-top: 1.5rem;
+        }
+
+        .footer-note a {
+            text-decoration: none;
+            font-weight: 500;
+            padding: 0.45rem 1rem;
+            border-radius: 999px;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            display: inline-block;
+            color: #a5b4fc;
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.15);
+        }
+
+        .footer-note a:hover {
+            background: rgba(99, 102, 241, 0.2);
+            border-color: rgba(99, 102, 241, 0.4);
+            color: #c7d2fe;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+        }
+
+        .footer-info {
+            color: #64748b;
+            font-size: 0.8rem;
+            display: inline-flex;
+            align-items: center;
+        }
+
+        #last-updated {
+            font-size: 0.75rem;
+            color: #6B7280;
+            width: 100%;
+            text-align: center;
+            margin-top: 0.5rem;
+        }
+
+        .text-gray-400 {
+            color: #9CA3AF;
+        }
+
+        .text-red-500 {
+            color: #EF4444;
+        }
+
+        @media (max-width: 640px) {
+            header {
+                margin-top: 2.5rem;
+            }
+            .container {
+                padding: 1rem 1rem;
+                margin: 0.5rem auto;
+            }
+
+            .stats-container {
+                grid-template-columns: 1fr;
+                gap: 0.75rem;
+            }
+
+            .stat-value {
+                font-size: 1.75rem;
+            }
+
+            .stat-label {
+                font-size: 0.75rem;
+            }
+
+            th,
+            td {
+                padding: 0.75rem 0.4rem;
+                font-size: 0.8rem;
+            }
+
+            .rank-cell {
+                gap: 0.5rem;
+            }
+
+            h1 {
+                font-size: 1.35rem;
+            }
+
+            #question-title {
+                font-size: 1rem;
+            }
+
+            .leaderboard-wrapper {
+                border-radius: 0.75rem;
+                margin: 0;
+            }
+
+            .table-scroll-wrapper {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            .footer-note {
+                flex-direction: column;
+                gap: 0.5rem;
+                align-items: center;
+                text-align: center;
+                padding-bottom: 2rem;
+            }
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: #94a3b8;
+            font-size: 1rem;
+            line-height: 1.6;
+            font-style: italic;
+        }
+
+        .spinner-wrap {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 3rem;
+            gap: 0.75rem;
+            color: #94a3b8;
+        }
+    
+
+
+        @media (max-width: 640px) {
+
+        }
+        .nav-back {
+            position: absolute;
+            top: 1.5rem;
+            left: 1.5rem;
+            display: inline-flex;
+            align-items: center;
+            width: fit-content;
+            text-decoration: none;
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            color: var(--text-muted, #94a3b8);
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color, rgba(255,255,255,0.1));
+            transition: all 0.2s;
+            font-size: 0.85rem;
+            font-family: 'Inter', sans-serif;
+            z-index: 1000;
+        }
+        .nav-back:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+            transform: translateY(-1px);
+        }
+        @media (max-width: 640px) {
+            .nav-back {
+                top: 1rem;
+                left: 1rem;
+                padding: 0.4rem 0.8rem;
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    
+
+
+    <a href="/" id="backBtn" class="nav-back">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:0.5rem;"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+            <span id="backBtnText">Back to Dashboard</span>
+        </a>
+
+    <div class="bg-blobs" aria-hidden="true">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+    </div>
+
+    <div class="container">
+
+<!-- Header -->
+        <header>
+            <h1>Leaderboard</h1>
+            <p id="question-title"></p>
+        </header>
+
+        <!-- Stats -->
+        <div class="stats-container">
+            <div class="stat-box">
+                <p class="stat-label">Submissions</p>
+                <p class="stat-value" id="total-submissions">--</p>
+            </div>
+            <div class="stat-box">
+                <p class="stat-label">Average Score</p>
+                <p class="stat-value" id="average-marks">--</p>
+            </div>
+        </div>
+
+        <!-- Table -->
+        <div class="leaderboard-wrapper">
+            <div class="table-scroll-wrapper">
+                <svg style="width:0;height:0;position:absolute;" aria-hidden="true" focusable="false">
+                    <defs>
+                        <linearGradient id="grad-gold" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#fde047;stop-opacity:1" />
+                            <stop offset="50%" style="stop-color:#fbbf24;stop-opacity:1" />
+                            <stop offset="100%" style="stop-color:#b45309;stop-opacity:1" />
+                        </linearGradient>
+                        <linearGradient id="grad-silver" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#f1f5f9;stop-opacity:1" />
+                            <stop offset="50%" style="stop-color:#94a3b8;stop-opacity:1" />
+                            <stop offset="100%" style="stop-color:#475569;stop-opacity:1" />
+                        </linearGradient>
+                        <linearGradient id="grad-bronze" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#fb923c;stop-opacity:1" />
+                            <stop offset="50%" style="stop-color:#d97706;stop-opacity:1" />
+                            <stop offset="100%" style="stop-color:#78350f;stop-opacity:1" />
+                        </linearGradient>
+                    </defs>
+                </svg>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Rank</th>
+                            <th>Roll Number</th>
+                            <th>Marks</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leaderboard-body">
+                        <tr class="state-row">
+                            <td colspan="3">
+                                <div class="spinner-wrap">
+                                    <span class="spinner"></span>
+                                    Loading leaderboard…
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer-note">
+            <span class="footer-info">Auto-refreshes every 30s</span>
+            <p id="last-updated" style="margin: 0; width: auto;"></p>
+            
+        </div>
+
+    </div>
+
+    <script>
+        const tbody = document.getElementById('leaderboard-body');
+        const questionTitle = document.getElementById('question-title');
+        const lastUpdated = document.getElementById('last-updated');
+        const totalSubEl = document.getElementById('total-submissions');
+        const avgMarksEl = document.getElementById('average-marks');
+
+        const qno = window.location.pathname.split('/').filter(Boolean).pop() || '';
+        questionTitle.textContent = qno ? `Question: ${qno.toUpperCase()}` : 'Overall';
+
+        function getMedal(rank) {
+            const config = {
+                1: { grad: 'grad-gold', class: 'medal-gold' },
+                2: { grad: 'grad-silver', class: 'medal-silver' },
+                3: { grad: 'grad-bronze', class: 'medal-bronze' }
+            };
+
+            if (rank <= 3) {
+                const c = config[rank];
+                return `
+                    <svg class="medal ${c.class}" style="width: 24px; height: 24px; flex-shrink: 0;" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <!-- Medallion Ribbons -->
+                        <path d="M8 12L7 22L12 19L17 22L16 12" fill="rgba(0,0,0,0.2)" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/>
+                        <path d="M9 12L8.5 20L12 18L15.5 20L15 12" fill="currentColor" opacity="0.6"/>
+                        <!-- Circular Medallion -->
+                        <circle cx="12" cy="12" r="8" fill="url(#${c.grad})"/>
+                        <!-- Inner details -->
+                        <circle cx="12" cy="12" r="6" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+                        <circle cx="12" cy="12" r="5" fill="none" stroke="rgba(0,0,0,0.1)" stroke-width="0.5"/>
+                        <!-- Star -->
+                        <path d="M12 9l.9 2.1 2.1.3-1.6 1.4.4 2.2-1.8-1-1.8 1 .4-2.2-1.6-1.4 2.1-.3z" fill="rgba(255,255,255,0.9)"/>
+                    </svg>
+                `;
+            }
+            return `<svg class="medal medal-default" style="width: 20px; height: 20px; flex-shrink: 0;" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="4"/></svg>`;
+        }
+
+        async function fetchLeaderboard() {
+            try {
+                const res = await fetch(`/api/leaderboard/${qno}`);
+                if (!res.ok) {
+                    const err = new Error(`HTTP ${res.status}`);
+                    err.status = res.status;
+                    throw err;
+                }
+                const data = await res.json();
+
+                tbody.innerHTML = '';
+
+                if (Array.isArray(data) && data.length > 0) {
+                    totalSubEl.textContent = data.length;
+                    const avg = (data.reduce((s, e) => s + e.marks, 0) / data.length).toFixed(2);
+                    avgMarksEl.textContent = avg;
+
+                    data.forEach(entry => {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                        <td><div class="rank-cell">${getMedal(entry.rank)} ${entry.rank}</div></td>
+                        <td class="roll-cell">${entry.roll}</td>
+                        <td class="marks-cell">${entry.marks}</td>
+                    `;
+                        tbody.appendChild(tr);
+                    });
+                } else {
+                    totalSubEl.textContent = '0';
+                    avgMarksEl.textContent = 'N/A';
+                    tbody.innerHTML = `
+                    <tr class="state-row">
+                        <td colspan="3">
+                            <p class="empty-state">No submissions yet. <br> Be the first to secure a spot on the leaderboard!</p>
+                        </td>
+                    </tr>`;
+                }
+
+                lastUpdated.textContent = `Last updated: ${new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }).toUpperCase()}`;
+
+            } catch (err) {
+                console.error(err);
+                if (err.status === 403) {
+                    totalSubEl.textContent = '--';
+                    avgMarksEl.textContent = '--';
+                    tbody.innerHTML = `
+                    <tr class="state-row">
+                        <td colspan="3">
+                            <div class="empty-state" style="font-style:normal; text-align:center;">
+                                <div style="color:#fbbf24; font-weight:700; font-size:1.1rem; margin-bottom:0.5rem;">
+                                    <span style="display:inline-block;width:8px;height:8px;background:#fbbf24;border-radius:50%;margin-right:6px;animation:pulse-dot 1.5s ease-in-out infinite;vertical-align:middle;"></span>
+                                    Waiting for the instructor to start the session.
+                                </div>
+                                <div style="color:#94a3b8; font-size:0.85rem;">
+                                    This page will refresh on its own, no need to reload.
+                                </div>
+                            </div>
+                        </td>
+                    </tr>`;
+                    // Auto-refresh when server opens
+                    setInterval(function () {
+                        fetch('/api/server-status')
+                            .then(function (r) { return r.json(); })
+                            .then(function (d) { if (d.is_open) window.location.reload(); })
+                            .catch(function () { });
+                    }, 5000);
+                } else {
+                    totalSubEl.textContent = '--';
+                    avgMarksEl.textContent = '--';
+                    tbody.innerHTML = `
+                    <tr class="state-row">
+                        <td colspan="3">
+                            <p class="error-state">❌ Failed to load leaderboard data — check the API connection.</p>
+                        </td>
+                    </tr>`;
+                }
+            }
+        }
+
+        fetchLeaderboard();
+        setInterval(fetchLeaderboard, 30000);
+
+        // Check if user is connecting from localhost using server API
+        fetch('/api/is-admin').then(res => res.json()).then(data => {
+            if (data.is_admin) {
+                const b = document.getElementById('backBtn');
+                if (b) if(b) b.href = '/admin'; const span = document.getElementById('backBtnText'); if(span) span.innerText = 'Back to Admin Panel';
+            } else {
+                document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
+            }
+        }).catch(() => {
+            document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
+        });
+    </script>
+</body>
+
+</html>

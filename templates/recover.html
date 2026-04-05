@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recover Code - DCF Server</title>
+    <!-- Self-hosted fonts — no external dependencies, works offline -->
+    <link rel="stylesheet" href="/assets/fonts/fonts.css">
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --surface-color: rgba(30, 36, 51, 0.7);
+            --surface-hover: rgba(45, 53, 72, 0.8);
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --success: #10b981;
+            --danger: #ef4444;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-color: rgba(255, 255, 255, 0.08);
+            --glow: rgba(99, 102, 241, 0.5);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            background-image:
+                radial-gradient(circle at 15% 50%, rgba(99, 102, 241, 0.15), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(236, 72, 153, 0.15), transparent 25%);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+            line-height: 1.5;
+            font-size: 0.9rem;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 600px;
+            padding: 2.5rem;
+            position: relative;
+            animation: floatIn 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        @keyframes floatIn {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2.2rem;
+            font-weight: 800;
+            line-height: 1.1;
+            margin-bottom: 0.75rem;
+            background: linear-gradient(135deg, #fff 0%, #a5b4fc 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-align: center;
+        }
+
+        .subtitle {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+
+        label {
+            display: block;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+        }
+
+        input {
+            display: block;
+            width: 100%;
+            background: rgba(15, 23, 42, 0.6);
+            border: 2px solid var(--border-color);
+            border-radius: 12px;
+            padding: 0.85rem 1rem;
+            color: white;
+            font-size: 1rem;
+            font-family: 'Inter', monospace;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+            -webkit-appearance: none;
+            appearance: none;
+            min-height: 48px;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1), inset 0 2px 4px rgba(0, 0, 0, 0.2);
+            background: rgba(15, 23, 42, 0.8);
+        }
+
+        input[readonly] {
+            background: rgba(15, 23, 42, 0.3) !important;
+            border-color: rgba(255, 255, 255, 0.05);
+            color: var(--text-muted);
+            cursor: not-allowed;
+            user-select: none;
+            box-shadow: none;
+        }
+
+        input[readonly]:focus {
+            border-color: rgba(255, 255, 255, 0.05);
+            box-shadow: none;
+        }
+
+        /* Custom Select component */
+        .custom-select-wrapper {
+            position: relative;
+            user-select: none;
+            width: 100%;
+        }
+
+        .custom-select {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(15, 23, 42, 0.6);
+            border: 2px solid var(--border-color);
+            border-radius: 12px;
+            padding: 0.75rem 1rem;
+            color: white;
+            font-size: 0.95rem;
+            font-family: 'Inter', monospace;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .custom-select.open {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2), inset 0 2px 4px rgba(0, 0, 0, 0.2);
+            background: rgba(15, 23, 42, 0.8);
+            border-bottom-left-radius: 4px;
+            border-bottom-right-radius: 4px;
+        }
+
+        .custom-select-arrow {
+            color: #94a3b8;
+            transition: transform 0.3s ease;
+        }
+
+        .custom-select.open .custom-select-arrow {
+            transform: rotate(180deg);
+        }
+
+        .custom-options {
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            right: 0;
+            background: #1e293b;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+            z-index: 100;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px);
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .custom-select.open+.custom-options {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+        .custom-option {
+            padding: 0.75rem 1rem;
+            color: var(--text-main);
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: background 0.2s ease, color 0.2s ease;
+            font-family: 'Inter', monospace;
+        }
+
+        .custom-option:hover {
+            background: rgba(99, 102, 241, 0.15);
+            color: #a5b4fc;
+        }
+
+        .custom-option.selected {
+            background: rgba(99, 102, 241, 0.25);
+            color: #fff;
+            font-weight: 600;
+        }
+
+        .custom-options::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .custom-options::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.1);
+        }
+
+        .custom-options::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+        }
+
+        .btn-primary {
+            width: 100%;
+            padding: 1rem;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            font-family: 'Inter', sans-serif;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: linear-gradient(135deg, var(--primary) 0%, #818cf8 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+            margin-top: 0.5rem;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(99, 102, 241, 0.5);
+        }
+
+        .error-msg {
+            color: var(--danger);
+            font-size: 0.875rem;
+            margin-top: 1rem;
+            display: none;
+            background-color: rgba(239, 68, 68, 0.1);
+            padding: 0.75rem;
+            border-radius: 6px;
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            text-align: center;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-top: 1.5rem;
+            color: #a5b4fc;
+            text-decoration: none;
+            font-size: 0.82rem;
+            font-weight: 500;
+            padding: 0.45rem 1rem;
+            border-radius: 999px;
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.15);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .back-link:hover {
+            background: rgba(99, 102, 241, 0.2);
+            border-color: rgba(99, 102, 241, 0.4);
+            color: #c7d2fe;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+        }
+
+        @media (max-width: 640px) {
+            body {
+                padding: 1rem;
+                justify-content: center;
+                align-items: center;
+            }
+
+            .container {
+                padding: 1.5rem;
+                border-radius: 20px;
+            }
+
+            h1 {
+                font-size: 1.8rem;
+                margin-bottom: 0.5rem;
+            }
+
+            .subtitle {
+                margin-bottom: 1.5rem;
+                font-size: 0.85rem;
+            }
+
+            .btn-primary {
+                padding: 0.85rem;
+                font-size: 1rem;
+            }
+
+            input {
+                padding: 0.75rem 1rem;
+                font-size: 0.95rem;
+            }
+
+            .custom-select {
+                padding: 0.65rem 1rem;
+                font-size: 0.9rem;
+            }
+        }
+
+        .nav-back {
+            position: absolute;
+            top: 1.5rem;
+            left: 1.5rem;
+            display: inline-flex;
+            align-items: center;
+            width: fit-content;
+            text-decoration: none;
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            color: var(--text-muted, #94a3b8);
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+            transition: all 0.2s;
+            font-size: 0.85rem;
+            font-family: 'Inter', sans-serif;
+            z-index: 1000;
+        }
+
+        .nav-back:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+            transform: translateY(-1px);
+        }
+
+        @media (max-width: 640px) {
+            .nav-back {
+                top: 1rem;
+                left: 1rem;
+                padding: 0.4rem 0.8rem;
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+
+
+
+    <a href="/" id="backBtn" class="nav-back">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" style="margin-right:0.5rem;">
+            <line x1="19" y1="12" x2="5" y2="12"></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+        </svg>
+        <span id="backBtnText">Back to Dashboard</span>
+    </a>
+
+    <div class="container">
+        <h1>Recover Code</h1>
+        <p class="subtitle">Lost your code? Download your most recent submission.</p>
+
+        <form id="recoverForm">
+            <div class="form-group">
+                <label for="rollInput">Roll Number</label>
+                <input type="text" id="rollInput" placeholder="CS25M046" required autocomplete="off" spellcheck="false"
+                    style="text-transform: uppercase;">
+            </div>
+
+            <div class="form-group">
+                <label for="qnoInput">Question</label>
+                <div class="custom-select-wrapper">
+                    <div class="custom-select" id="customSelect">
+                        <span id="customSelectValue">Loading...</span>
+                        <svg class="custom-select-arrow" width="16" height="16" viewBox="0 0 24 24"
+                            xmlns="http://www.w3.org/2000/svg">
+                            <polyline points="6 9 12 15 18 9" fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round"></polyline>
+                        </svg>
+                    </div>
+                    <div class="custom-options" id="customOptions"></div>
+                </div>
+                <input type="hidden" id="qnoInput" required>
+            </div>
+
+            <button type="submit" class="btn-primary" id="submitBtn">Request Recovery</button>
+            <div id="statusMsg"
+                style="display:none; margin-top:1rem; padding:0.75rem 1rem; border-radius:10px; text-align:center; font-size:0.9rem; font-weight:500;">
+            </div>
+            <div id="errorMsg" class="error-msg"></div>
+        </form>
+
+        <div style="text-align: center; width: 100%;">
+
+        </div>
+    </div>
+
+    <script>
+        // Fetch questions for dropdown (filtered by student submissions)
+        async function loadQuestions(roll = "") {
+            try {
+                const selectValue = document.getElementById('customSelectValue');
+                const optionsContainer = document.getElementById('customOptions');
+                const hiddenInput = document.getElementById('qnoInput');
+
+                if (!roll) {
+                    selectValue.textContent = 'Enter Roll Number first';
+                    optionsContainer.innerHTML = '';
+                    hiddenInput.value = '';
+                    return;
+                }
+
+                selectValue.textContent = 'Checking submissions...';
+                const response = await fetch(`/api/student-submissions/${roll}`);
+                const questions = await response.json();
+                
+                optionsContainer.innerHTML = ''; // clear old
+
+                if (questions.length === 0) {
+                    selectValue.textContent = 'No submissions found';
+                    hiddenInput.value = '';
+                    // Add a disabled hint option
+                    const opt = document.createElement('div');
+                    opt.className = 'custom-option';
+                    opt.style.fontStyle = 'italic';
+                    opt.style.opacity = '0.5';
+                    opt.textContent = 'Zero submissions for this Roll';
+                    optionsContainer.appendChild(opt);
+                    return;
+                }
+
+                // Select first question by default
+                selectValue.textContent = questions[0];
+                hiddenInput.value = questions[0];
+
+                questions.forEach((q, idx) => {
+                    const opt = document.createElement('div');
+                    opt.className = 'custom-option';
+                    if (idx === 0) opt.classList.add('selected');
+                    opt.textContent = q;
+                    opt.dataset.value = q;
+
+                    opt.addEventListener('click', () => {
+                        selectValue.textContent = q;
+                        hiddenInput.value = q;
+                        document.querySelectorAll('.custom-option').forEach(el => el.classList.remove('selected'));
+                        opt.classList.add('selected');
+                        document.getElementById('customSelect').classList.remove('open');
+                    });
+
+                    optionsContainer.appendChild(opt);
+                });
+            } catch (err) {
+                console.error("Failed to load questions", err);
+                document.getElementById('customSelectValue').textContent = 'Error loading';
+            }
+        }
+
+        // Handle manual roll number changes to update questions
+        document.getElementById('rollInput').addEventListener('input', function() {
+            const roll = this.value.trim().toUpperCase();
+            if (roll.length >= 4) {
+                 loadQuestions(roll);
+            } else {
+                 loadQuestions("");
+            }
+        });
+
+        // Custom Dropdown Interactions
+        document.getElementById('customSelect').addEventListener('click', function (e) {
+            e.stopPropagation();
+            // Don't open if no questions or roll not entered
+            const currentVal = document.getElementById('customSelectValue').textContent;
+            if (currentVal.includes('Enter Roll') || currentVal.includes('No submissions')) return;
+            this.classList.toggle('open');
+        });
+
+        document.addEventListener('click', function (e) {
+            const select = document.getElementById('customSelect');
+            if (select && !select.contains(e.target)) {
+                select.classList.remove('open');
+            }
+        });
+
+        let pollInterval = null;
+
+        document.getElementById('recoverForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const roll = document.getElementById('rollInput').value.trim().toUpperCase();
+            const qno = document.getElementById('qnoInput').value;
+            const errorMsg = document.getElementById('errorMsg');
+            const statusMsg = document.getElementById('statusMsg');
+            const submitBtn = document.getElementById('submitBtn');
+
+            errorMsg.style.display = 'none';
+            statusMsg.style.display = 'none';
+
+            if (!roll || !qno) {
+                errorMsg.textContent = "Please select a question from your submissions.";
+                errorMsg.style.display = 'block';
+                return;
+            }
+
+            // Stop any existing poll
+            if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+
+            try {
+                // Step 1: Submit the request
+                const reqResponse = await fetch(`/api/request-recovery/${qno}/${roll}`, { method: 'POST' });
+                if (!reqResponse.ok) {
+                    const data = await reqResponse.json();
+                    throw new Error(data.detail || data.response || "Request failed.");
+                }
+
+                // Show waiting state
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Waiting for Approval...';
+                statusMsg.style.display = 'block';
+                statusMsg.style.background = 'rgba(59, 130, 246, 0.1)';
+                statusMsg.style.border = '1px solid rgba(59, 130, 246, 0.3)';
+                statusMsg.style.color = '#93c5fd';
+                statusMsg.innerHTML = 'Request submitted. Waiting for admin to approve...';
+
+                // Step 2: Poll for approval
+                pollInterval = setInterval(async () => {
+                    try {
+                        const statusRes = await fetch(`/api/recovery-status/${qno}/${roll}`);
+                        const statusData = await statusRes.json();
+
+                        if (statusData.status === 'approved') {
+                            clearInterval(pollInterval);
+                            pollInterval = null;
+                            statusMsg.innerHTML = 'Approved! Downloading your file...';
+                            statusMsg.style.background = 'rgba(16, 185, 129, 0.1)';
+                            statusMsg.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+                            statusMsg.style.color = '#34d399';
+
+                            // Step 3: Download the file
+                            const fileRes = await fetch(`/api/recover/${qno}/${roll}`);
+                            if (!fileRes.ok) {
+                                const errData = await fileRes.json();
+                                throw new Error(errData.detail || errData.response || 'Download failed.');
+                            }
+                            const blob = await fileRes.blob();
+                            let filename = `${qno}_recovered.cpp`;
+                            const disposition = fileRes.headers.get('Content-Disposition');
+                            if (disposition && disposition.includes('filename=')) {
+                                filename = disposition.split('filename=')[1].replace(/"/g, '');
+                            }
+
+                            const url = window.URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.style.position = 'absolute';
+                            a.style.left = '-9999px';
+                            a.href = url;
+                            a.download = filename;
+                            document.body.appendChild(a);
+                            const clickEvent = new MouseEvent('click', { view: window, bubbles: true, cancelable: true });
+                            a.dispatchEvent(clickEvent);
+                            setTimeout(() => {
+                                if (document.body.contains(a)) document.body.removeChild(a);
+                                window.URL.revokeObjectURL(url);
+                            }, 1500);
+
+                            statusMsg.innerHTML = 'File downloaded successfully!';
+                            submitBtn.disabled = false;
+                            submitBtn.textContent = 'Request Recovery';
+
+                        } else if (statusData.status === 'none') {
+                            // Request was rejected
+                            clearInterval(pollInterval);
+                            pollInterval = null;
+                            statusMsg.style.background = 'rgba(239, 68, 68, 0.1)';
+                            statusMsg.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+                            statusMsg.style.color = '#f87171';
+                            statusMsg.innerHTML = 'Request was rejected by the admin.';
+                            submitBtn.disabled = false;
+                            submitBtn.textContent = 'Request Recovery';
+                        }
+                    } catch (pollErr) {
+                        console.error('Poll error:', pollErr);
+                    }
+                }, 2000);
+
+            } catch (err) {
+                errorMsg.textContent = err.message;
+                errorMsg.style.display = 'block';
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Request Recovery';
+            }
+        });
+
+        async function detectRoll() {
+            try {
+                const response = await fetch('/api/detect-roll');
+                const data = await response.json();
+                if (data.roll_no) {
+                    const rollInput = document.getElementById('rollInput');
+                    rollInput.value = data.roll_no;
+                    rollInput.setAttribute('readonly', true);
+
+                    // Re-load questions for this roll
+                    loadQuestions(data.roll_no);
+
+                    // Add a small visual feedback
+                    const subtitle = document.querySelector('.subtitle');
+                    const originalText = subtitle.textContent;
+                    subtitle.innerHTML = `<span style="color: var(--success); font-weight: 600;">Roll Number: ${data.roll_no} (Auto-detected)</span>`;
+
+                    // Revert subtitle after 3 seconds but keep roll number locked
+                    setTimeout(() => {
+                        subtitle.textContent = originalText;
+                    }, 5000);
+                } else {
+                    // Start in "Enter Roll" state
+                    loadQuestions("");
+                }
+            } catch (err) {
+                console.error("Failed to detect roll number", err);
+                loadQuestions("");
+            }
+        }
+
+        detectRoll();
+
+        fetch('/api/is-admin').then(res => res.json()).then(data => {
+            if (data.is_admin) {
+                const b = document.getElementById('backBtn');
+                if (b) if (b) b.href = '/admin'; const span = document.getElementById('backBtnText'); if (span) span.innerText = 'Back to Admin Panel';
+            }
+        }).catch(() => { });
+    </script>
+</body>
+
+</html>

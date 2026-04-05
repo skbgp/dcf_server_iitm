@@ -1,0 +1,46 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+pip-log.txt
+.venv
+bin/
+include/
+lib/
+share/
+pyvenv.cfg
+.installed.cfg
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Runtime data
+.active_lab/
+logs/
+*.log
+*.log.*
+*.rdb
+tmp_file
+actual_output/
+practice_exports/
+
+# Course and Lab data (Keep the code, ignore the data)
+courses/
+
+# IDE/Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env

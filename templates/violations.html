@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Violations Log</title>
+    <link rel="stylesheet" href="/assets/fonts/fonts.css">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --surface-color: #1e293b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent: #3b82f6;
+            --border-color: #334155;
+            --danger: #ef4444;
+            --danger-bg: rgba(239, 68, 68, 0.1);
+            --warning: #f59e0b;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2rem;
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: absolute;
+            top: -20%;
+            left: -10%;
+            width: 70%;
+            height: 70%;
+            background: radial-gradient(circle, rgba(239, 68, 68, 0.1) 0%, transparent 60%);
+            z-index: -1;
+            filter: blur(80px);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 2rem;
+            padding-top: 3rem;
+        }
+
+        h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2.2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(to right, #f87171, #ef4444);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        p.subtitle {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            background: rgba(30, 41, 59, 0.4);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 2rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+        }
+
+        .stats-badge {
+            background: var(--surface-color);
+            border: 1px solid var(--border-color);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .stats-badge span {
+            color: var(--danger);
+        }
+
+        .btn-clear-all {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            background: rgba(239, 68, 68, 0.12);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.35);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .btn-clear-all:hover {
+            background: rgba(239, 68, 68, 0.25);
+            border-color: var(--danger);
+        }
+
+        /* Table */
+        .log-board {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .log-table {
+            width: 100%;
+            min-width: 900px;
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+
+        .log-table th {
+            background: var(--surface-color);
+            padding: 0.75rem 1rem;
+            text-align: left;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .log-table th:first-child {
+            border-radius: 8px 0 0 0;
+        }
+
+        .log-table th:last-child {
+            border-radius: 0 8px 0 0;
+        }
+
+        .log-table td {
+            padding: 0.9rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+            vertical-align: middle;
+        }
+
+        .log-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .log-table tbody tr {
+            transition: background 0.15s;
+        }
+
+        .log-table tbody tr:hover {
+            background: rgba(30, 41, 59, 0.7);
+        }
+
+        .roll {
+            font-family: 'Outfit', sans-serif;
+            font-weight: 700;
+            color: var(--danger);
+            font-size: 1.05rem;
+        }
+
+        .v-type-badge {
+            display: inline-block;
+            padding: 0.25rem 0.6rem;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .v-type-outside {
+            background: rgba(239, 68, 68, 0.15);
+            color: #fca5a5;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .v-type-mismatch {
+            background: rgba(245, 158, 11, 0.15);
+            color: #fcd34d;
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        .v-type-rereg {
+            background: rgba(168, 85, 247, 0.15);
+            color: #d8b4fe;
+            border: 1px solid rgba(168, 85, 247, 0.3);
+        }
+
+        .v-type-other {
+            background: rgba(100, 116, 139, 0.2);
+            color: #cbd5e1;
+            border: 1px solid rgba(100, 116, 139, 0.3);
+        }
+
+        .count-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 2rem;
+            padding: 0.25rem 0.6rem;
+            background: rgba(239, 68, 68, 0.15);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 20px;
+            font-weight: 700;
+            font-size: 0.85rem;
+        }
+
+        .ip-badge {
+            background: rgba(15, 23, 42, 0.6);
+            padding: 0.25rem 0.55rem;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 0.88rem;
+            color: var(--text-muted);
+            border: 1px solid var(--border-color);
+        }
+
+        .ip-actual {
+            border-color: rgba(239, 68, 68, 0.3);
+            color: #fca5a5;
+        }
+
+        .ts {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+
+        .btn-delete {
+            background: transparent;
+            color: #64748b;
+            border: 1px solid #334155;
+            padding: 0.3rem 0.65rem;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: 'Inter', sans-serif;
+            white-space: nowrap;
+        }
+
+        .btn-delete:hover {
+            background: rgba(239, 68, 68, 0.15);
+            color: #f87171;
+            border-color: rgba(239, 68, 68, 0.4);
+        }
+
+        #loading {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-muted);
+            font-size: 1.1rem;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: var(--text-muted);
+        }
+
+        .footer-note {
+            margin-top: 3rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.6rem;
+            flex-wrap: wrap;
+            font-size: 0.82rem;
+            color: #64748b;
+            padding-bottom: 2rem;
+        }
+
+        .footer-note a {
+            text-decoration: none;
+            font-weight: 500;
+            padding: 0.45rem 1rem;
+            border-radius: 999px;
+            color: #a5b4fc;
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.15);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            display: inline-block;
+        }
+
+        .footer-note a:hover {
+            background: rgba(99, 102, 241, 0.2);
+            border-color: rgba(99, 102, 241, 0.4);
+            color: #c7d2fe;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+        }
+
+        @media (max-width: 640px) {
+            body {
+                padding: 1rem 0.5rem;
+            }
+
+            .header {
+                margin-top: 2.5rem;
+            }
+
+            h1 {
+                font-size: 1.8rem;
+            }
+
+            .container {
+                padding: 1rem;
+                border-radius: 12px;
+            }
+
+            .log-board {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                margin: 0 -0.5rem;
+                padding: 0 0.5rem;
+            }
+
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 1rem;
+            }
+
+            .btn-clear-all {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .footer-note {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 10px;
+            padding: 0.85rem 1.25rem;
+            color: var(--text-main);
+            font-size: 0.9rem;
+            font-weight: 500;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+            transform: translateY(20px);
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+            z-index: 999;
+            max-width: 380px;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .toast.success {
+            border-color: rgba(16, 185, 129, 0.4);
+            color: #34d399;
+        }
+
+        .toast.error {
+            border-color: rgba(239, 68, 68, 0.4);
+            color: #f87171;
+        }
+    
+
+
+        @media (max-width: 640px) {
+
+        }
+        .nav-back {
+            position: absolute;
+            top: 1.5rem;
+            left: 1.5rem;
+            display: inline-flex;
+            align-items: center;
+            width: fit-content;
+            text-decoration: none;
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            color: var(--text-muted, #94a3b8);
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color, rgba(255,255,255,0.1));
+            transition: all 0.2s;
+            font-size: 0.85rem;
+            font-family: 'Inter', sans-serif;
+            z-index: 1000;
+        }
+        .nav-back:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+            transform: translateY(-1px);
+        }
+        @media (max-width: 640px) {
+            .nav-back {
+                top: 1rem;
+                left: 1rem;
+                padding: 0.4rem 0.8rem;
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    
+
+
+
+
+    <a href="/" id="backBtn" class="nav-back">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:0.5rem;"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+            <span id="backBtnText">Back to Dashboard</span>
+        </a>
+
+    <div class="header">
+        <h1>Violations Log</h1>
+        <p class="subtitle">Real-time IP and registration alerts</p>
+    </div>
+
+    <div class="container">
+
+<div class="controls">
+            <div id="stats" class="stats-badge">Total Violations: <span>0</span></div>
+            <div style="display:flex;gap:0.75rem;align-items:center;">
+                <div id="update-status" style="font-size: 0.8rem; color: var(--text-muted);">Real-time updates enabled
+                </div>
+                <button class="btn-clear-all" onclick="clearAll()">Clear All</button>
+            </div>
+        </div>
+
+        <div class="log-board">
+            <div id="grid">
+                <div id="loading">Scanning logs...</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script>
+        function showToast(msg, type = 'success') {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.className = `toast show ${type}`;
+            setTimeout(() => { t.className = 'toast'; }, 4000);
+        }
+
+        function vtypeBadgeClass(vtype) {
+            if (!vtype) return 'v-type-other';
+            const v = vtype.toLowerCase();
+            if (v.includes('outside') || v.includes('network')) return 'v-type-outside';
+            if (v.includes('mismatch')) return 'v-type-mismatch';
+            if (v.includes('re-reg') || v.includes('rereg') || v.includes('re_reg')) return 'v-type-rereg';
+            return 'v-type-other';
+        }
+
+        function formatTs(ts) {
+            if (!ts) return '-';
+            try {
+                const d = new Date(ts);
+                return d.toLocaleString('en-IN', { 
+                    day: '2-digit', month: '2-digit', year: 'numeric',
+                    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
+                }).toUpperCase();
+            } catch { return ts; }
+        }
+
+        async function deleteRow(roll, vtype) {
+            if (!confirm(`Remove all "${vtype}" violations for ${roll}?`)) return;
+            try {
+                const url = `/admin/delete_violation?roll=${encodeURIComponent(roll)}&v_type=${encodeURIComponent(vtype)}`;
+                const res = await fetch(url, { method: 'POST' });
+                const data = await res.json();
+                showToast(data.status || 'Done.', 'success');
+                fetchViolations();
+            } catch (e) {
+                showToast('Error: ' + e.message, 'error');
+            }
+        }
+
+        async function clearAll() {
+            if (!confirm('Clear ALL violations? This cannot be undone.')) return;
+            try {
+                const res = await fetch('/admin/delete_violation?clear_all=true', { method: 'POST' });
+                const data = await res.json();
+                showToast(data.status || 'Cleared.', 'success');
+                fetchViolations();
+            } catch (e) {
+                showToast('Error: ' + e.message, 'error');
+            }
+        }
+
+        async function fetchViolations() {
+            try {
+                const response = await fetch('/admin/violations');
+                const data = await response.json();
+
+                // Count total occurrences across all rows (sum of count column)
+                const totalCount = data.reduce((sum, v) => sum + (parseInt(v.count) || 1), 0);
+                document.getElementById('stats').innerHTML =
+                    `Total Violations: <span>${totalCount}</span> <span style="font-weight:400;color:var(--text-muted);font-size:0.8rem;">(${data.length} unique events)</span>`;
+
+                const grid = document.getElementById('grid');
+
+                if (data.length === 0) {
+                    grid.innerHTML = `
+                        <div class="empty-state">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 1rem; opacity: 0.5;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                            <h3>No Violations Recorded</h3>
+                        </div>
+                    `;
+                    return;
+                }
+
+                // Sort by roll number
+                const sorted = [...data].sort((a, b) => (a.roll_no || '').localeCompare(b.roll_no || ''));
+
+                grid.innerHTML = `
+                    <table class="log-table">
+                        <thead>
+                            <tr>
+                                <th>Roll No</th>
+                                <th>Violation Type</th>
+                                <th>Expected IP</th>
+                                <th>Actual IP</th>
+                                <th>Count</th>
+                                <th>Last Seen</th>
+                                <th>Remove</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${sorted.map(v => `
+                                <tr>
+                                    <td><span class="roll">${v.roll_no || '-'}</span></td>
+                                    <td><span class="v-type-badge ${vtypeBadgeClass(v.violation_type)}">${v.violation_type || '-'}</span></td>
+                                    <td><span class="ip-badge">${v.expected_ip || '-'}</span></td>
+                                    <td><span class="ip-badge ip-actual">${v.actual_ip || '-'}</span></td>
+                                    <td><span class="count-badge">${v.count || '1'}</span></td>
+                                    <td><span class="ts">${formatTs(v.timestamp)}</span></td>
+                                    <td>
+                                        <button class="btn-delete js-delete-row"
+                                            data-roll="${(v.roll_no || '').replace(/"/g, '&quot;')}"
+                                            data-vtype="${(v.violation_type || '').replace(/"/g, '&quot;')}">
+                                            ✕ Remove
+                                        </button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+
+            } catch (err) {
+                document.getElementById('grid').innerHTML =
+                    `<div id="loading" style="color: var(--danger);">Failed to fetch data: ${err.message}</div>`;
+            }
+        }
+
+    </script>
+
+    
+
+    <script>
+
+        fetchViolations();
+
+        // SSE for real-time updates
+        function setupSSE() {
+            const eventSource = new EventSource('/admin/violation-events');
+
+            eventSource.onmessage = function (event) {
+                if (event.data === 'update') {
+                    fetchViolations();
+                }
+            };
+
+            eventSource.onerror = function (err) {
+                console.error('SSE error:', err);
+                document.getElementById('update-status').textContent = 'Live connection lost. Retrying...';
+                eventSource.close();
+                // retry after 5 seconds if connection lost
+                setTimeout(setupSSE, 5000);
+            };
+
+            eventSource.onopen = function () {
+                document.getElementById('update-status').textContent = 'Real-time updates enabled';
+            };
+        }
+
+        setupSSE();
+
+        // Delegated listener for dynamically rendered delete buttons
+        document.getElementById('grid').addEventListener('click', (e) => {
+            const btn = e.target.closest('.js-delete-row');
+            if (!btn) return;
+            const roll = btn.dataset.roll;
+            const vtype = btn.dataset.vtype;
+            deleteRow(roll, vtype);
+        });
+
+        // Check if user is connecting from localhost using server API
+        fetch('/api/is-admin').then(res => res.json()).then(data => {
+            if (data.is_admin) {
+                const b = document.getElementById('backBtn');
+                if (b) if(b) b.href = '/admin'; const span = document.getElementById('backBtnText'); if(span) span.innerText = 'Back to Admin Panel';
+            } else {
+                document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
+            }
+        }).catch(() => {
+            document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
+        });
+    </script>
+</body>
+
+</html>

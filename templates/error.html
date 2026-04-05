@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Access Denied</title>
+    <link rel="stylesheet" href="/assets/fonts/fonts.css">
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --surface-color: rgba(30, 36, 51, 0.7);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --danger: #ef4444;
+            --danger-glow: rgba(239, 68, 68, 0.15);
+            --border-color: rgba(255, 255, 255, 0.08);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            background-image:
+                radial-gradient(circle at 50% 30%, rgba(239, 68, 68, 0.12), transparent 40%);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+        }
+
+        .container {
+            text-align: center;
+            max-width: 600px;
+            background: var(--surface-color);
+            border-radius: 24px;
+            padding: 3rem;
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+            animation: floatIn 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        @keyframes floatIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .error-code {
+            font-family: 'Outfit', sans-serif;
+            font-size: 5rem;
+            font-weight: 700;
+            color: var(--danger);
+            line-height: 1;
+            text-shadow: 0 0 40px var(--danger-glow);
+        }
+
+        .error-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin: 0.5rem 0 1rem 0;
+            color: var(--text-main);
+        }
+
+        .error-detail {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            line-height: 1.6;
+            padding: 1rem;
+            background: rgba(239, 68, 68, 0.08);
+            border: 1px solid rgba(239, 68, 68, 0.15);
+            border-radius: 12px;
+        }
+
+        .ip-badge {
+            display: block;
+            margin-top: 2rem;
+            padding: 0.6rem 1.2rem;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            font-size: 0.95rem;
+            color: var(--text-muted);
+            font-family: 'Inter', monospace;
+            letter-spacing: 0.5px;
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 1rem;
+            }
+
+            .container {
+                padding: 2rem 1.5rem;
+                border-radius: 20px;
+                width: 100%;
+            }
+
+            .error-code {
+                font-size: 3.5rem;
+            }
+
+            .error-title {
+                font-size: 1.25rem;
+            }
+
+            .error-detail {
+                padding: 0.85rem;
+                font-size: 0.85rem;
+                margin-bottom: 1.5rem;
+            }
+
+            .ip-badge {
+                margin-top: 1.5rem;
+                font-size: 0.85rem;
+                padding: 0.5rem 1rem;
+            }
+        }
+            .nav-back {
+            position: absolute;
+            top: 1.5rem;
+            left: 1.5rem;
+            display: inline-flex;
+            align-items: center;
+            width: fit-content;
+            text-decoration: none;
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            color: var(--text-muted, #94a3b8);
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color, rgba(255,255,255,0.1));
+            transition: all 0.2s;
+            font-size: 0.85rem;
+            font-family: 'Inter', sans-serif;
+            z-index: 1000;
+        }
+        .nav-back:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+            transform: translateY(-1px);
+        }
+        @media (max-width: 640px) {
+            .nav-back {
+                top: 1rem;
+                left: 1rem;
+                padding: 0.4rem 0.8rem;
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <a href="/" id="backBtn" class="nav-back">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:0.5rem;"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+            <span id="backBtnText">Back to Dashboard</span>
+        </a>
+
+    <div class="container">
+
+<div class="error-code">{{ERROR_CODE}}</div>
+        <div class="error-title">{{ERROR_TITLE}}</div>
+        <div class="error-detail">{{ERROR_DETAIL}}</div>
+
+    </div>
+    <div class="ip-badge">Your IP: {{CLIENT_IP}}</div>
+
+    <script>
+        // Hide "Back to Home" if we're already on the homepage — clicking it just reloads the same error
+        if (window.location.pathname === '/') {
+            var b = document.getElementById('backBtn');
+            if (b) b.style.display = 'none';
+        }
+
+        // Check if user is connecting from localhost using server API
+        fetch('/api/is-admin').then(function(res) { return res.json(); }).then(function(data) {
+            if (data.is_admin) {
+                var b = document.getElementById('backBtn');
+                if (b) { b.href = '/admin'; }
+                var span = document.getElementById('backBtnText');
+                if (span) { span.innerText = 'Back to Admin Panel'; }
+            }
+        }).catch(function() {});
+    </script>
+
+    <script>
+        // Auto-refresh: poll server status and reload when server opens
+        (function () {
+            // Only auto-refresh for 403 "server closed" errors (protects from mass external pinging)
+            var errorCode = '{{ERROR_CODE}}';
+            var errorDetail = '{{ERROR_DETAIL}}';
+            if (errorCode !== '403' || errorDetail.indexOf('currently closed') === -1) return;
+
+            // Hide "Back to Home" since user is already on the homepage
+            var backBtn = document.getElementById('backBtn');
+            if (backBtn) backBtn.style.display = 'none';
+
+            // Replace error detail with a single combined message
+            var detail = document.querySelector('.error-detail');
+            if (detail) {
+                detail.style.color = '#fbbf24';
+                detail.innerHTML = '<span style="display:inline-block;width:8px;height:8px;background:#fbbf24;border-radius:50%;margin-right:6px;animation:pulse 1.5s ease-in-out infinite;vertical-align:middle;"></span>Waiting for the instructor to start the session. This page will refresh on its own, no need to reload.';
+            }
+
+            // Inject Docs & Resources links so students can browse while waiting
+            var container = document.querySelector('.container');
+            if (container) {
+                var linksDiv = document.createElement('div');
+                linksDiv.style.cssText = 'display:flex;gap:0.6rem;justify-content:center;flex-wrap:wrap;margin-top:1.5rem;padding-top:1.25rem;border-top:1px solid rgba(255,255,255,0.08);';
+                linksDiv.innerHTML = ''
+                    + '<a href="/docs" target="_blank" style="text-decoration:none;font-weight:500;padding:0.45rem 1rem;border-radius:999px;color:#a5b4fc;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.15);transition:all 0.25s;display:inline-flex;align-items:center;gap:0.4rem;font-size:0.85rem;">'
+                    +   '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>'
+                    +   'Docs &amp; Resources'
+                    + '</a>'
+                    + '<a href="/leaderboard" target="_blank" style="text-decoration:none;font-weight:500;padding:0.45rem 1rem;border-radius:999px;color:#a5b4fc;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.15);transition:all 0.25s;display:inline-flex;align-items:center;gap:0.4rem;font-size:0.85rem;">'
+                    +   '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>'
+                    +   'Leaderboard'
+                    + '</a>';
+                container.appendChild(linksDiv);
+            }
+
+            setInterval(function () {
+                fetch('/api/server-status')
+                    .then(function (res) { return res.json(); })
+                    .then(function (data) {
+                        if (data.is_open) {
+                            if (window.location.pathname === '/') {
+                                window.location.reload();
+                            } else {
+                                window.location.replace('/');
+                            }
+                        }
+                    })
+                    .catch(function () { });
+            }, 5000);
+        })();
+    </script>
+
+    <style>
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.4;
+                transform: scale(0.8);
+            }
+        }
+            .nav-back {
+            position: absolute;
+            top: 1.5rem;
+            left: 1.5rem;
+            display: inline-flex;
+            align-items: center;
+            width: fit-content;
+            text-decoration: none;
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            color: var(--text-muted, #94a3b8);
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color, rgba(255,255,255,0.1));
+            transition: all 0.2s;
+            font-size: 0.85rem;
+            font-family: 'Inter', sans-serif;
+            z-index: 1000;
+        }
+        .nav-back:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+            transform: translateY(-1px);
+        }
+        @media (max-width: 640px) {
+            .nav-back {
+                top: 1rem;
+                left: 1rem;
+                padding: 0.4rem 0.8rem;
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</body>
+
+</html>
