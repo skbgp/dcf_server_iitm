@@ -1076,6 +1076,13 @@ async def delete_submission(request: Request, roll: str, qno: Optional[str] = No
                             del _LEADERBOARD_CACHE[q]
                     except Exception as e:
                         return JSONResponse(status_code=500, content={"status": f"Error deleting {q}: {str(e)}"})
+            
+            # Clean up the parent directory if it's now completely empty
+            if not os.listdir(roll_dir):
+                try:
+                    os.rmdir(roll_dir)
+                except OSError:
+                    pass
     
     # update grades.csv
     if deleted_count > 0:
