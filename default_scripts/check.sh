@@ -29,7 +29,7 @@ print_header() {
     echo -e "${CYAN}${BOLD}======================================================================${NC}\n"
 }
 
-print_step()    { echo -e "${BLUE}${BOLD}---> $1${NC}"; }
+print_step()    { echo -e "${BLUE}${BOLD}:: $1${NC}"; }
 print_info()    { echo -e "${DIM}[INFO]    $1${NC}"; }
 print_success() { echo -e "${GREEN}${BOLD}[SUCCESS] $1${NC}"; }
 print_error()   { echo -e "${RED}${BOLD}[ERROR]   $1${NC}"; }
@@ -79,7 +79,7 @@ grade_student() {
     mkdir -p "$student_log_dir"
 
     for question in "${questions[@]}"; do
-        echo -e "${YELLOW}${BOLD}=> Evaluating ${question}...${NC}"
+        echo -e "${YELLOW}${BOLD}:: Evaluating ${question}...${NC}"
         
         rm -rf "$ACTUAL_OUTPUT_DIR/$question" 2>/dev/null
         mkdir -p "$ACTUAL_OUTPUT_DIR/$question"
