@@ -331,7 +331,7 @@ log "Packaging starter kit..."
     fi
 )
 
-ZIP_NAME=$(find .active_lab/statics -maxdepth 1 -name ".*.zip" 2>/dev/null | head -1)
+ZIP_NAME=$(find .active_lab/statics/ -maxdepth 1 -name ".*.zip" 2>/dev/null | head -1)
 if [ -n "$ZIP_NAME" ]; then
     log_ok "Starter kit packaged"
 else
