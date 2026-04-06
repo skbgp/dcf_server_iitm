@@ -23,7 +23,7 @@ print_header() {
     echo -e "${MAGENTA}${BOLD}======================================================================${NC}\n"
 }
 
-print_step()    { echo -e "${BLUE}${BOLD}---> $1${NC}"; }
+print_step()    { echo -e "${BLUE}${BOLD}:: $1${NC}"; }
 print_info()    { echo -e "${DIM}[INFO]    $1${NC}"; }
 print_success() { echo -e "${GREEN}${BOLD}[SUCCESS] $1${NC}"; }
 print_error()   { echo -e "${RED}${BOLD}[ERROR]   $1${NC}"; }
@@ -138,7 +138,7 @@ process_question() {
         fi
     fi
 
-    echo -e "${YELLOW}${BOLD}=> Submitting ${Q_NO} for ${ROLL_NO}...${NC}"
+    echo -e "${YELLOW}${BOLD}:: Submitting ${Q_NO} for ${ROLL_NO}...${NC}"
     print_step "Uploading file to server..."
 
     BASE_URL="${SERVER_URL%/}"
