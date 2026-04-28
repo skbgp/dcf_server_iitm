@@ -162,8 +162,12 @@ CS24B003
 
 **Public test cases** (optional, shipped to students) —  Put these in `courses/<COURSE>/<LAB>/statics/<LAB>/testcases/Q1/input/` and `.../output/`. Same naming convention. Students use these with `./check.sh` to test locally before submitting.
 
-**Offline files** (optional) — Any extra PDFs, reference docs, datasets can go in `courses/<COURSE>/offline_files/`. Students can download these from the web interface.
+**Offline files** (optional) — Any extra PDFs or reference docs can go in `courses/<COURSE>/offline_files/`. Students can download these from the web interface.
 
+**Offline Dataset Dependencies (Sandbox Auto-Mounting)** — If a lab assignment requires the student's C++ program to natively read datasets (e.g., `ifstream("csv/data1.csv")`), drop the dataset folder directly into your lab root using one of the recognized folder names: `courses/<COURSE>/<LAB>/csv/` (or `data/`, `assets/`, `public/`, `private/`). 
+When evaluating codes offline, the server automatically detects these directories and natively bind-mounts them into the student's secure `bubblewrap` execution sandbox as read-only filesystems.
+> **Note**: To actually trigger the software to read these, the inputs instructing the program to open them (like typing `csv/data1.csv`) are still fed via `testcases/Q1/input/input01.txt`.
+> **Starter Pack (`statics/`)**: To allow students to test natively on their laptops without "File Not Found" errors, replicate this structure (like copying your `public/` files into specific `csv/` and `input/` folders) and zip it into the `statics/<LAB>/starter_pack/` area so their local relative paths perfectly duplicate the server.
 ---
 
 ## Starting the server — `start.sh`

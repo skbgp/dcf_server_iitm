@@ -185,7 +185,28 @@ async def lifespan(app: FastAPI):
     else:
         print("⚠️  Could not detect network subnet. Network restrictions disabled.")
 
+    async def course_conf_watcher():
+        last_mtime = 0
+        conf_path = ".active_lab/course.conf"
+        while True:
+            await asyncio.sleep(5)
+            try:
+                if os.path.exists(conf_path):
+                    current_mtime = os.path.getmtime(conf_path)
+                    if last_mtime != 0 and current_mtime != last_mtime:
+                        print("Detected course.conf modification, triggering automatic grade recalculation...")
+                        await _internal_recalculate_grades()
+                    last_mtime = current_mtime
+            except Exception:
+                pass
+            except asyncio.CancelledError:
+                break
+
+    watcher_task = asyncio.create_task(course_conf_watcher())
+
     yield  # --- server runs here ---
+
+    watcher_task.cancel()
     print("Application shutting down...")
 
 # Create the FastAPI app. We disable the default /docs and /redoc routes
@@ -209,8 +230,9 @@ async def about():
 
 _CREDIT_WATERMARK = (
     '<div id="dcf-credit" style="position:fixed;bottom:10px;right:15px;'
-    'font-size:0.75rem;color:rgba(255,255,255,0.4);pointer-events:none;'
-    'z-index:9999;font-family:\'Inter\',sans-serif;opacity:0.6;">'
+    'font-size:0.75rem;pointer-events:none;z-index:999999;'
+    'font-family:\'Inter\',sans-serif;opacity:0.7;'
+    'mix-blend-mode:difference;color:#fff;">'
     f'Developed by {__author__} ({__roll__})</div>'
 )
 
@@ -234,8 +256,9 @@ class AuthorCreditMiddleware(BaseHTTPMiddleware):
         body = b"".join(body_chunks)
         html = body.decode("utf-8", errors="replace")
         # Inject credit before </body> if not already present
-        if "dcf-credit" not in html and "</body>" in html:
-            html = html.replace("</body>", _CREDIT_WATERMARK + "\n</body>")
+        if "dcf-credit" not in html:
+            import re
+            html = re.sub(r'(</body\s*>)', _CREDIT_WATERMARK + r'\n\1', html, flags=re.IGNORECASE)
         # Strip content-length so it's recalculated for the modified body
         new_headers = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
         return StarletteResponse(
@@ -1036,6 +1059,179 @@ async def delete_violation(request: Request, roll: str = None, v_type: str = Non
 
         scope = f" (type: {v_type_filter})" if v_type_filter else ""
         return JSONResponse({"status": f"Removed {removed} violation(s) for {roll_upper}{scope}. {len(kept_rows)} remaining."})
+
+async def _internal_recalculate_grades():
+    """Recalculate grades for all previous submissions based on the latest course.conf max marks."""
+    
+    import csv, fcntl, os, glob, re
+
+    base_submission_dir = os.path.join(".active_lab", "submissions")
+    conf_path = os.path.join(".active_lab", "course.conf")
+    grades_file = os.path.join(".active_lab", "grades.csv")
+    lock_file = os.path.join(".active_lab", "grades.csv.lock")
+    registrations_file = os.path.join(".active_lab", "registrations.csv")
+    students_file = os.path.join(".active_lab", "students.txt")
+
+    if not os.path.exists(base_submission_dir):
+        return {"status": "Success", "message": "No submissions found to recalculate."}
+
+    # 1. Load latest config
+    fm_list = []
+    if os.path.exists(conf_path):
+        with open(conf_path, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("fm_list="):
+                    fm_list = [float(x) for x in line.split("=", 1)[1].split(",")]
+
+    lock_fd = open(lock_file, "w")
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+
+        all_questions = set()
+
+        for roll in os.listdir(base_submission_dir):
+            roll_path = os.path.join(base_submission_dir, roll)
+            if not os.path.isdir(roll_path): continue
+
+            for qno in os.listdir(roll_path):
+                q_path = os.path.join(roll_path, qno)
+                if not os.path.isdir(q_path): continue
+                all_questions.add(qno)
+
+                q_match = re.search(r'([0-9]+)$', qno)
+                if q_match:
+                    q_idx = int(q_match.group(1)) - 1
+                    fm = fm_list[q_idx] if q_idx < len(fm_list) else (fm_list[-1] if fm_list else 50)
+                else:
+                    fm = fm_list[-1] if fm_list else 50
+
+                marks_lines = []
+                # iterate over submission directories which are formatted as timestamps
+                ts_dirs = [d for d in os.listdir(q_path) if os.path.isdir(os.path.join(q_path, d))]
+                ts_dirs.sort()
+
+                for ts_dir in ts_dirs:
+                    ts_path = os.path.join(q_path, ts_dir)
+                    res_files = glob.glob(os.path.join(ts_path, "result_*.txt"))
+                    if not res_files:
+                        marks_lines.append(f"{ts_dir}, 0.0\n")
+                        continue
+                    
+                    res_file = res_files[0]
+                    passed = 0
+                    total = 0
+                    try:
+                        with open(res_file, "r") as rf:
+                            lines = rf.readlines()
+                            in_final = False
+                            for line in lines:
+                                if "--- FINAL RESULTS ---" in line:
+                                    in_final = True
+                                    continue
+                                if in_final and line.strip() and ":" in line:
+                                    total += 1
+                                    if "Passed" in line:
+                                        passed += 1
+                        
+                        if total > 0:
+                            score = round((passed / total) * fm, 2)
+                        else:
+                            score = 0.0
+                            
+                        marks_lines.append(f"{ts_dir}, {score}\n")
+                    except Exception:
+                        marks_lines.append(f"{ts_dir}, 0.0\n")
+
+                if marks_lines:
+                    with open(os.path.join(q_path, "marks.txt"), "w") as mf:
+                        mf.writelines(marks_lines)
+                else:
+                    with open(os.path.join(q_path, "marks.txt"), "w") as mf:
+                        pass
+        
+        # 3. Rebuild grades.csv
+        all_students = []
+        if os.path.exists(students_file):
+            with open(students_file, "r") as sf:
+                for line in sf:
+                    r = line.strip().upper()
+                    if r: all_students.append(r)
+        
+        registered_students = set()
+        if os.path.exists(registrations_file):
+            with open(registrations_file, "r", newline="", encoding="utf-8") as rf:
+                rdr = csv.DictReader(rf)
+                for row in rdr:
+                    if row.get("roll_no"):
+                        registered_students.add(row["roll_no"].upper())
+        
+        all_questions = sorted(list(all_questions), key=lambda q: int(q[1:]) if q.startswith("Q") and q[1:].isdigit() else 999)
+        if not all_questions:
+            all_questions = [f"Q{i+1}" for i in range(len(fm_list))] if fm_list else ["Q1", "Q2"]
+            
+        grades = {}
+        for s in all_students:
+            grades[s] = {}
+            is_reg = s in registered_students
+            for q in all_questions:
+                grades[s][q] = "0.0" if is_reg else "Absent"
+                
+        for roll in os.listdir(base_submission_dir):
+            if roll not in grades:
+                is_reg = roll in registered_students
+                grades[roll] = {q: ("0.0" if is_reg else "Absent") for q in all_questions}
+            
+            roll_path = os.path.join(base_submission_dir, roll)
+            if not os.path.isdir(roll_path): continue
+            
+            for qno in all_questions:
+                marks_file = os.path.join(roll_path, qno, "marks.txt")
+                best_score = -1.0
+                if os.path.exists(marks_file):
+                    with open(marks_file, "r") as mf:
+                        for line in mf:
+                            parts = line.strip().split(",")
+                            if len(parts) >= 2:
+                                try:
+                                    score = float(parts[1].strip())
+                                    if score > best_score:
+                                        best_score = score
+                                except: pass
+                
+                if best_score >= 0:
+                    grades[roll][qno] = str(best_score)
+                    
+        headers = ["roll"] + all_questions
+        if len(all_questions) > 1:
+            headers.append("Total")
+            
+        with open(grades_file, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=headers)
+            writer.writeheader()
+            for r in sorted(grades.keys()):
+                row = {"roll": r}
+                total_s = 0.0
+                has_any = False
+                for q in all_questions:
+                    val = grades[r].get(q, "Absent")
+                    row[q] = val
+                    if val != "Absent":
+                        try:
+                            total_s += float(val)
+                            has_any = True
+                        except: pass
+                if len(all_questions) > 1:
+                    row["Total"] = str(round(total_s, 2)) if has_any else "0.0"
+                writer.writerow(row)
+                
+        _LEADERBOARD_CACHE.clear()
+
+    finally:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        lock_fd.close()
+        
+    return {"status": "Success", "message": "Grades successfully recalculated."}
 
 @app.post("/admin/delete_submission")
 async def delete_submission(request: Request, roll: str, qno: Optional[str] = None):

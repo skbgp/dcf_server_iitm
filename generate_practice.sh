@@ -141,7 +141,15 @@ echo ""
 echo -e "${BLUE}--->${NC} ${BOLD}Copying starter files${NC}"
 cp "$STATICS_DIR/CS2XBXXX/"*.cpp "$PRACTICE_DIR/" 2>/dev/null || true
 cp "$STATICS_DIR/"*.pdf "$PRACTICE_DIR/" 2>/dev/null || true
-print_ok "Copied .cpp templates and question PDFs"
+
+# Export offline datasets so the practice executable can find them natively
+for d_name in "csv" "assets" "data" "public" "private"; do
+    if [ -d "$LAB_DIR/$d_name" ]; then
+        cp -r "$LAB_DIR/$d_name" "$PRACTICE_DIR/" 2>/dev/null || true
+    fi
+done
+
+print_ok "Copied .cpp templates, question PDFs, and offline datasets"
 
 # ---- MERGE TESTCASES ----
 echo -e "\n${BLUE}--->${NC} ${BOLD}Merging test cases${NC}"

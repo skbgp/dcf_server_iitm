@@ -166,14 +166,32 @@ def _run_single_test(i, testcase, executable_path, output_dir, sub_dir, timeoute
             "--tmpfs", "/var",
             "--ro-bind", os.path.abspath(executable_path), os.path.abspath(executable_path),
             "--bind", os.path.abspath(sandbox_dir), os.path.abspath(sandbox_dir),
+        ]
+        
+        # Expose common offline dataset directories if they exist in the lab
+        for d_name in ["csv", "assets", "data", "public", "private"]:
+            lab_data_dir = os.path.join(".active_lab", d_name)
+            if os.path.isdir(lab_data_dir):
+                sb_data_dir = os.path.join(os.path.abspath(sandbox_dir), d_name)
+                run_command.extend(["--ro-bind", os.path.abspath(lab_data_dir), sb_data_dir])
+                
+        run_command.extend([
             "--unshare-all",
             "--die-with-parent",
             os.path.abspath(executable_path)
-        ]
+        ])
     else:
         # macOS fallback: no sandbox, just run the binary directly.
         # Fine for local testing but NOT secure for real exams.
         run_command = [os.path.abspath(executable_path)]
+        
+        # Symlink dataset directories so local test matches sandbox paths
+        for d_name in ["csv", "assets", "data", "public", "private"]:
+            lab_data_dir = os.path.join(".active_lab", d_name)
+            if os.path.isdir(lab_data_dir):
+                sb_data_dir = os.path.join(sandbox_dir, d_name)
+                if not os.path.exists(sb_data_dir):
+                    os.symlink(os.path.abspath(lab_data_dir), sb_data_dir)
 
     proc = None
     try:
@@ -360,9 +378,7 @@ def handle_submission(qno: str, roll: str, filename: str, content: str):
         # Compilation failed — log the error and record 0 marks
         logs.append(f"ERROR: Compilation failed.\nCompiler Output:\n{compile_proc.stderr}\n")
         with open(log_path, "w") as log_file: log_file.writelines(logs)
-        line = f"{timestamp}, 0\n"
-        with open(marks_log, "a") as f:
-            f.write(line)
+        _update_grades_csv(roll_upper, qno_upper, 0, 0, timestamp, marks_log)
         return {"status": "Compilation Error", "results": {}, "details": compile_proc.stderr}
     logs.append("SUCCESS: Compilation successful.\n")
 
@@ -424,29 +440,18 @@ def handle_submission(qno: str, roll: str, filename: str, content: str):
 
     # Step 5: Calculate marks proportionally (passed/total * full_marks)
     failed = total - passed
-    marks = round((passed / total) * fm, 2)
 
-    # Append to marks.txt so we have a history of all submission scores
-    line = f"{timestamp}, {marks}\n"
-    with open(marks_log, "a") as f:
-        f.write(line)
+    # Update marks.txt and grades.csv atomically under the lock
+    _update_grades_csv(roll_upper, qno_upper, passed, total, timestamp, marks_log)
 
-    # Update the master grades.csv with the BEST mark for this question
-    _update_grades_csv(roll_upper, qno_upper, marks)
-
-    return {"status": "Finished", "results": results, "passed": passed, "failed": failed, "marks": marks, "full": fm}
+    return {"status": "Finished", "results": results, "passed": passed, "failed": failed}
 
 
 # --- grades.csv management ---
 # keeps track of each student's best score per question
 
-def _update_grades_csv(roll: str, qno: str, new_marks: float):
-    """Update grades.csv with the student's best marks for a question.
-    
-    Only replaces the existing score if the new submission scored higher.
-    Also maintains a Total column that sums all question scores.
-    Uses file locking (fcntl) to prevent corruption from concurrent workers.
-    """
+def _update_grades_csv(roll: str, qno: str, passed: int, total: int, timestamp: str, marks_log: str):
+    """Update marks.txt and grades.csv atomically under a file lock."""
     import csv as csv_mod
     import fcntl
     grades_file = ".active_lab/grades.csv"
@@ -454,6 +459,16 @@ def _update_grades_csv(roll: str, qno: str, new_marks: float):
     lock_fd = open(lock_file, "w")
     try:
         fcntl.flock(lock_fd, fcntl.LOCK_EX)  # wait for exclusive lock
+
+        _load_course_conf()
+        global fm_list
+        match = re.search(r'([0-9]+)$', qno)
+        q_idx = int(match.group(1)) - 1 if match else 0
+        fm = fm_list[q_idx] if fm_list and q_idx < len(fm_list) else (fm_list[-1] if fm_list else 50)
+        
+        new_marks = round((passed / total) * fm, 2) if total > 0 else 0.0
+        with open(marks_log, "a") as f:
+            f.write(f"{timestamp}, {new_marks}\n")
 
         # Figure out header columns: one per question (Q1, Q2, etc.)
         global fm_list
