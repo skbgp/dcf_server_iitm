@@ -441,10 +441,16 @@ def handle_submission(qno: str, roll: str, filename: str, content: str):
     # Step 5: Calculate marks proportionally (passed/total * full_marks)
     failed = total - passed
 
+    _load_course_conf()
+    match = re.search(r'([0-9]+)$', qno_upper)
+    q_idx = int(match.group(1)) - 1 if match else 0
+    fm = fm_list[q_idx] if fm_list and q_idx < len(fm_list) else (fm_list[-1] if fm_list else 50)
+    new_marks = round((passed / total) * fm, 2) if total > 0 else 0.0
+
     # Update marks.txt and grades.csv atomically under the lock
     _update_grades_csv(roll_upper, qno_upper, passed, total, timestamp, marks_log)
 
-    return {"status": "Finished", "results": results, "passed": passed, "failed": failed}
+    return {"status": "Finished", "results": results, "passed": passed, "failed": failed, "marks": new_marks, "total_marks": fm}
 
 
 # --- grades.csv management ---
@@ -471,7 +477,6 @@ def _update_grades_csv(roll: str, qno: str, passed: int, total: int, timestamp: 
             f.write(f"{timestamp}, {new_marks}\n")
 
         # Figure out header columns: one per question (Q1, Q2, etc.)
-        global fm_list
         num_questions = len(fm_list)
         all_questions = [f"Q{i+1}" for i in range(num_questions)]
         if qno not in all_questions:
