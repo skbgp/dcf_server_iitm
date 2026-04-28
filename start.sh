@@ -289,7 +289,7 @@ for item in registrations.csv violations.csv grades.csv; do
     if [ ! -f "$LAB_DIR/$item" ]; then touch "$LAB_DIR/$item"; fi
 done
  
-for item in testcases submissions registrations.csv violations.csv course.conf grades.csv statics; do
+for item in testcases submissions registrations.csv violations.csv course.conf grades.csv statics csv data assets public private; do
     rm -rf "./.active_lab/$item" 2>/dev/null
     if [ -e "$LAB_DIR/$item" ]; then ln -sf "../$LAB_DIR/$item" "./.active_lab/$item"; fi
 done
