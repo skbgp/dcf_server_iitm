@@ -248,7 +248,7 @@
                         <td><span class="badge">${report.lab || '-'}</span></td>
                         <td style="font-weight: 600;">${report.question}</td>
                         <td>
-                            <a href="/admin/moss-proxy?url=${report.url}" target="_blank" class="btn btn-warning" style="padding: 4px 12px; font-size: 0.8rem;">View Report</a>
+                            <a href="/admin/moss-proxy?url=${encodeURIComponent(report.url)}" target="_blank" rel="noopener noreferrer" class="btn btn-warning" style="padding: 4px 12px; font-size: 0.8rem;">View Report</a>
                         </td>
                         <td>
                             <button onclick="deleteEntry(${originalIndex}, this)" class="btn btn-danger" style="padding: 4px 12px; font-size: 0.8rem;">Delete</button>

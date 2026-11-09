@@ -3,6 +3,13 @@
 # Copyright (c) 2026 Shubham (CS25M046). All rights reserved. See LICENSE.
 
 import os
+import base64
+import binascii
+import secrets
+import time
+from pathlib import Path
+from urllib.parse import urlsplit
+from uuid import UUID, uuid4
 import json
 import socket
 import asyncio
@@ -32,8 +39,14 @@ from fastapi.templating import Jinja2Templates
 
 templates = Jinja2Templates(directory="templates")
 from typing import Any, Dict, Optional, List, Tuple
-from celery.result import AsyncResult
-from task import handle_submission
+from kombu.exceptions import OperationalError
+from redis.exceptions import RedisError
+from starlette.concurrency import run_in_threadpool
+
+from file_state import locked, replace_text
+from grading_queue import active_job, admit, owner_key, release
+from sandbox import require_sandbox
+from task import MAX_SOURCE_BYTES, capp, handle_submission
 
 # File paths
 STUDENTS_FILE = ".active_lab/students.txt"
@@ -92,6 +105,42 @@ violation_listeners = []
 # Simple rate limiter: tracks the last submission time per roll number.
 _submission_cooldowns: Dict[str, float] = {}
 SUBMIT_COOLDOWN_SECONDS = 5
+ADMIN_PASSWORD = os.environ.get("DCF_ADMIN_PASSWORD")
+TEST_IP_ENABLED = os.environ.get("DCF_ENABLE_TEST_IP") == "1"
+MAX_UPLOAD_BYTES = MAX_SOURCE_BYTES + 16 * 1024
+
+
+def active_lab():
+    return str(Path(".active_lab/submissions").resolve().parent)
+
+
+def save_registrations(registrations):
+    with replace_text(REGISTRATIONS_FILE) as stream:
+        writer = csv.writer(stream)
+        writer.writerow(["roll_no", "ip_address", "timestamp"])
+        for roll, data in registrations.items():
+            writer.writerow([roll, data["ip"], data["timestamp"]])
+
+
+def persist_registration(roll, ip):
+    updated = dict(ip_roll_map)
+    updated[roll] = {"ip": ip, "timestamp": datetime.now().isoformat(timespec="seconds")}
+    save_registrations(updated)
+    ip_roll_map.update(updated)
+
+
+def admin_authenticated(request):
+    if not ADMIN_PASSWORD:
+        return True
+    scheme, _, value = request.headers.get("authorization", "").partition(" ")
+    if scheme.lower() != "basic":
+        return False
+    try:
+        username, password = base64.b64decode(value, validate=True).split(b":", 1)
+    except (ValueError, binascii.Error):
+        return False
+    return username == b"admin" and secrets.compare_digest(password, ADMIN_PASSWORD.encode())
+
 
 # Approvals tracking for code recovery requests.
 recovery_requests: Dict[str, Dict[str, dict]] = {}
@@ -99,12 +148,9 @@ total_recovery_count = 0  # Cumulative count for notifications
 
 def save_recovery_requests():
     """Persist recovery requests to disk so they survive server restarts."""
-    try:
-        data = {"requests": recovery_requests, "total_count": total_recovery_count}
-        with open(RECOVERY_REQUESTS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2)
-    except Exception as e:
-        print(f"[RECOVERY] Warning: failed to save recovery requests: {e}")
+    with replace_text(RECOVERY_REQUESTS_FILE) as stream:
+        json.dump({"requests": recovery_requests, "total_count": total_recovery_count}, stream, indent=2)
+
 
 def load_recovery_requests():
     """Load recovery requests from disk on startup."""
@@ -137,9 +183,9 @@ async def lifespan(app: FastAPI):
     print(f"{__project__} by {__author__} ({__roll__})")
     initial_students = get_student_list()
     
-    if len(initial_students) == 0:
-        print("No student in the class. Exiting...")
-        return
+    if not initial_students:
+        raise RuntimeError("The selected lab has no students")
+    await run_in_threadpool(require_sandbox)
     
     # Restore registration map
     if os.path.exists(REGISTRATIONS_FILE):
@@ -478,7 +524,7 @@ async def check_access(request: Request, call_next):
     # debugging "why can't student CS24B001 access the server?" without
     # walking over to their machine.
     if is_real_admin:
-        test_ip = request.headers.get("X-Lab-Test-IP")
+        test_ip = request.headers.get("X-Lab-Test-IP") if TEST_IP_ENABLED and admin_authenticated(request) else None
         if test_ip:
             client_ip = normalize_ip(test_ip)
         else:
@@ -490,8 +536,8 @@ async def check_access(request: Request, call_next):
     request.state.client_ip = client_ip
     
     # Admin = the (possibly mocked) IP matches the server's own IP
-    is_admin = (client_ip == SERVER_IP)
-    request.state.is_admin = is_admin
+    is_admin = is_real_admin and client_ip == SERVER_IP
+    request.state.is_admin = is_admin and admin_authenticated(request)
     
     request_path = request.url.path
     
@@ -504,14 +550,28 @@ async def check_access(request: Request, call_next):
         request_path.startswith("/admin") or 
         request_path == "/violations" or
         request_path.startswith("/system-access") or
-        request_path.startswith("/api/system-access")
+        request_path.startswith("/api/system-access") or
+        request_path == "/api/recovery-requests"
     )
     if admin_routes:
         if not is_admin:
             return render_error_page(403, "Access Denied", "Admin access is restricted.", client_ip)
+        if not admin_authenticated(request):
+            return Response(status_code=401, headers={"WWW-Authenticate": 'Basic realm="DCF Admin"'})
+        origin = request.headers.get("origin")
+        if request.method not in {"GET", "HEAD", "OPTIONS"} and origin and origin != str(request.base_url).rstrip("/"):
+            return Response(status_code=403)
         return await call_next(request)
     
-    # 2. public pages: static resources, docs, and server status check
+    if request.method == "POST" and request_path.startswith("/submit/"):
+        try:
+            size = int(request.headers.get("content-length", ""))
+        except ValueError:
+            return JSONResponse(status_code=411, content={"response": "Content-Length is required."})
+        if not 0 < size <= MAX_UPLOAD_BYTES:
+            return JSONResponse(status_code=413, content={"response": "Submission is too large."})
+
+    # Public resources and non-sensitive status endpoints
     public_paths = (
         request_path == "/api/server-status" or
         request_path.startswith("/docs") or
@@ -530,6 +590,8 @@ async def check_access(request: Request, call_next):
     )
     if public_paths:
         return await call_next(request)
+
+    is_admin = request.state.is_admin
 
     # 3. Hard IP gate for starter kit downloads and submissions
     #    These routes MUST come from LAB_SUBNETS. Students cannot bypass this
@@ -640,12 +702,11 @@ async def admin_page(request: Request):
         pass
 
     try:
-        return templates.TemplateResponse("admin.html", {
-            "request": request,
+        return templates.TemplateResponse(request=request, name="admin.html", context={
             "course_name": course_name,
             "lab_name": lab_name
         })
-    except Exception:
+    except FileNotFoundError:
         return HTMLResponse(content="<h1>404 — admin.html not found</h1>", status_code=404)
 
 @app.get("/system-access", response_class=HTMLResponse)
@@ -1051,17 +1112,34 @@ async def delete_submission(request: Request, roll: str, qno: Optional[str] = No
     if not roll_upper or not roll_upper.replace('_','').isalnum():
         raise HTTPException(status_code=400, detail="Invalid roll number")
     
+    targets = [q.strip().upper() for q in qno.split(",") if q.strip()] if qno else None
+    if targets is not None and (not targets or any(not re.fullmatch(r"Q[1-9][0-9]*", q) for q in targets)):
+        raise HTTPException(status_code=400, detail="Invalid question")
+    async with file_lock:
+        try:
+            if await run_in_threadpool(active_job, capp.backend.client, active_lab(), roll_upper):
+                raise HTTPException(status_code=409, detail="A grading task is still active for this student")
+        except RedisError:
+            raise HTTPException(status_code=503, detail="Grading is temporarily unavailable")
+        return await run_in_threadpool(delete_submission_files, roll_upper, qno, targets)
+
+
+def delete_submission_files(roll_upper, qno, targets):
+    with locked(Path(active_lab()) / "grades.csv.lock"):
+        return _delete_submission_files(roll_upper, qno, targets)
+
+
+def _delete_submission_files(roll_upper, qno, targets):
     base_submission_dir = os.path.join(".active_lab", "submissions")
     deleted_count = 0
     deleted_questions = []
     if os.path.isdir(base_submission_dir):
         import shutil
         # support comma-separated question list
-        target_questions = [q.strip().upper() for q in qno.split(",") if q.strip()] if qno else None
         
         roll_dir = os.path.join(base_submission_dir, roll_upper)
         if os.path.isdir(roll_dir):
-            q_dirs = target_questions if target_questions else [
+            q_dirs = targets if targets else [
                 d for d in os.listdir(roll_dir) if os.path.isdir(os.path.join(roll_dir, d))
             ]
             for q in q_dirs:
@@ -1126,7 +1204,7 @@ async def delete_submission(request: Request, roll: str, qno: Optional[str] = No
                                 
                         kept_rows.append(row)
                 
-                with open(grades_file, mode='w', newline='', encoding='utf-8') as f:
+                with replace_text(grades_file) as f:
                     writer = csv.DictWriter(f, fieldnames=fieldnames)
                     writer.writeheader()
                     writer.writerows(kept_rows)
@@ -1231,7 +1309,9 @@ async def run_moss(request: Request):
                 # Rate limit protection (3s between questions if multiple)
                 if idx > 0: await asyncio.sleep(3)
                 
-                url = m.send()
+                url = await run_in_threadpool(m.send)
+                if not valid_moss_report(url):
+                    raise ValueError("MOSS returned an invalid report URL")
                 generated_reports.append({"q": q, "url": url})
                 
                 # Log to Course History (formatted date time)
@@ -1428,20 +1508,16 @@ async def import_moss_url(request: Request):
     url_text = data.get("url", "").strip()
     fallback_q = data.get("question", "Manual").strip() or "Manual"
     
-    reports_to_save = []
-    
-    # Check if bulk JSON format is pasted (e.g. {"Q1": "http://moss..."})
-    bulk_matches = re.findall(r'"([^"]+)"\s*:\s*"(http://moss\.stanford\.edu/[^"]+)"', url_text)
-    if bulk_matches:
-        reports_to_save = [{"q": m[0], "u": m[1]} for m in bulk_matches]
-    else:
-        # Fallback to single URL parse
-        single = re.search(r'(http://moss\.stanford\.edu/[^\s"]+)', url_text)
-        if single:
-            reports_to_save = [{"q": fallback_q, "u": single.group(1)}]
-        else:
-            return JSONResponse(status_code=400, content={"status": "Error: Please provide a valid MOSS report URL."})
-    
+    try:
+        imported = json.loads(url_text)
+    except json.JSONDecodeError:
+        imported = {fallback_q: url_text}
+    if not isinstance(imported, dict) or not imported or any(
+        not isinstance(url, str) or not valid_moss_report(url) for url in imported.values()
+    ):
+        return JSONResponse(status_code=400, content={"status": "Error: Please provide a valid MOSS report URL."})
+    reports_to_save = [{"q": question, "u": url} for question, url in imported.items()]
+
     # Save to course history
     try:
         real_path = os.path.realpath(os.path.join(".active_lab", "submissions"))
@@ -1551,140 +1627,31 @@ async def moss_history_page(request: Request):
     except:
         pass
 
-    return templates.TemplateResponse("moss_history.html", {"request": request, "course_name": course_name})
+    return templates.TemplateResponse(request=request, name="moss_history.html", context={"course_name": course_name})
+
+def valid_moss_report(url):
+    try:
+        parsed = urlsplit(url)
+        return (
+            parsed.scheme in {"http", "https"}
+            and parsed.hostname == "moss.stanford.edu"
+            and parsed.username is None and parsed.password is None
+            and parsed.port in (None, 443 if parsed.scheme == "https" else 80)
+            and parsed.path.startswith("/results/")
+            and "\\" not in url and not any(char.isspace() for char in url)
+        )
+    except ValueError:
+        return False
+
 
 @app.get("/admin/moss-proxy")
 async def moss_proxy(request: Request, url: str):
-    """Reverse proxy to Stanford MOSS to bypass iframe restrictions.
-    
-    Proxies the main results page, frameset comparison pages, and individual
-    code-view frames — applying a modern dark theme to all of them.
-    """
-    if not getattr(request.state, "is_admin", False):
+    """Open a validated Stanford report at its own origin."""
+    if not is_super_admin(request):
         raise HTTPException(status_code=403, detail="Admin privileges required")
-    from fastapi.responses import HTMLResponse
-    import urllib.request, urllib.parse, re as _re
-
-    def _proxy_url(target: str) -> str:
-        """Rewrite a MOSS URL to go through our proxy."""
-        return f"/admin/moss-proxy?url={urllib.parse.quote(target, safe='')}"
-
-    def _rewrite_links(html: str, base_url: str) -> str:
-        """Rewrite all href/src attributes pointing to moss.stanford.edu to go through our proxy."""
-        from urllib.parse import urljoin
-        def _replace_attr(m):
-            attr = m.group(1)   # href or src
-            quote = m.group(2)  # quote character
-            raw = m.group(3)    # original URL
-            # Resolve relative URLs
-            full = urljoin(base_url, raw) if not raw.startswith('http') else raw
-            if 'moss.stanford.edu' in full:
-                return f'{attr}={quote}{_proxy_url(full)}{quote}'
-            return m.group(0)
-        return _re.sub(r'(href|src|SRC|HREF)=(["\'])([^"\']*)\2', _replace_attr, html)
-
-    try:
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=15) as response:
-            content_type = response.headers.get('Content-Type', 'text/html')
-            raw_data = response.read()
-
-        # If not HTML (images, GIFs, etc.), return raw binary with correct content type
-        if 'text/html' not in content_type:
-            from fastapi.responses import Response
-            return Response(content=raw_data, media_type=content_type)
-
-        html = raw_data.decode('utf-8', errors='replace')
-
-        # Detect page type
-        is_frameset = '<frameset' in html.lower() or '<FRAMESET' in html
-
-        # ── Rewrite all MOSS links/frames to go through our proxy ──
-        html = _rewrite_links(html, url)
-
-        if is_frameset:
-            # Frameset pages: just rewrite frame sources (already done above) and return
-            return HTMLResponse(content=html)
-
-        elif 'How to Read the Results' not in html:
-            # Any sub-page (code frames, match summaries, etc.) — keep default MOSS styling
-            return HTMLResponse(content=html)
-
-        else:
-            # Main results table page — full modern styling
-            modern_css = """
-            <style>
-                @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
-                :root {
-                    --bg: #0f172a;
-                    --card: #1e293b;
-                    --text: #f8fafc;
-                    --muted: #94a3b8;
-                    --accent: #fbbf24;
-                }
-                body { 
-                    background: var(--bg); 
-                    color: var(--text); 
-                    font-family: 'Inter', sans-serif; 
-                    padding: 2rem;
-                    max-width: 1200px;
-                    margin: 0 auto;
-                }
-                table { 
-                    width: 100%; 
-                    border-collapse: separate; 
-                    border-spacing: 0;
-                    background: var(--card);
-                    border-radius: 12px;
-                    overflow: hidden;
-                    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
-                    border: 1px solid rgba(255,255,255,0.05);
-                    margin-bottom: 2rem;
-                }
-                th { 
-                    background: rgba(255, 255, 255, 0.03); 
-                    color: var(--muted);
-                    text-transform: uppercase;
-                    font-size: 0.75rem;
-                    font-weight: 600;
-                    letter-spacing: 0.05em;
-                    padding: 1.25rem 1rem;
-                    text-align: left;
-                    border-bottom: 1px solid rgba(255,255,255,0.1);
-                }
-                td { 
-                    padding: 1.25rem 1rem; 
-                    border-bottom: 1px solid rgba(255,255,255,0.05);
-                    font-size: 0.9rem;
-                }
-                tr:last-child td { border-bottom: none; }
-                tr:hover td { background: rgba(255, 255, 255, 0.02); }
-                a { 
-                    color: var(--accent); 
-                    text-decoration: none; 
-                    font-weight: 500;
-                }
-                a:hover { text-decoration: underline; }
-                h2, h3 { margin-bottom: 0.5rem; color: var(--text); }
-                hr { border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 2rem 0; }
-                p { color: var(--muted); }
-                th:last-child, td:last-child {
-                    text-align: right;
-                    padding-right: 2rem;
-                }
-            </style>
-            """
-            html = modern_css + html
-
-            # Remove the "[ How to Read the Results | Tips | ... | Credits ]" nav block + <hr>/<HR>
-            html = _re.sub(r'\[[\s\S]*?How to Read the Results[\s\S]*?Credits[\s\S]*?\](\s*<hr>)?', '', html, flags=_re.IGNORECASE)
-            # Remove legacy metadata lines
-            html = _re.sub(r'^.*Options -l.*$', '', html, flags=_re.MULTILINE)
-            html = _re.sub(r'(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d+.*?\d{4}', '', html)
-            
-            return HTMLResponse(content=html)
-    except Exception as e:
-        return HTMLResponse(content=f"<h1>Error loading MOSS</h1><p>{str(e)}</p>")
+    if not valid_moss_report(url):
+        raise HTTPException(status_code=400, detail="Invalid Stanford MOSS report URL")
+    return RedirectResponse(url, headers={"Referrer-Policy": "no-referrer", "Cache-Control": "no-store"})
 
 
 @app.get("/admin/download_submissions")
@@ -1809,7 +1776,7 @@ async def download_submissions(request: Request):
         if os.path.exists(submissions_dir):
             for root, dirs, files in os.walk(submissions_dir):
                 for file in files:
-                    if file == ".DS_Store" or file == "submission.out" or file.startswith("actual_output_"):
+                    if file.startswith(".") or file == "submission.out" or file.startswith("actual_output_"):
                         continue
                     file_path = os.path.join(root, file)
                     rel_path = os.path.relpath(file_path, submissions_dir)
@@ -1883,23 +1850,8 @@ async def starter_kit(request: Request, roll_no: str):
                 "response": "This roll number is already registered on a different system. Contact the instructor to transfer your registration."
             }, status_code=status.HTTP_403_FORBIDDEN)
 
-    # All checks passed — write/update the registration
-    async with file_lock:
-        ip_roll_map[capitalized_roll_no] = {
-            "ip": effective_ip,
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
-        
-        if not os.path.exists(os.path.dirname(REGISTRATIONS_FILE)):
-            os.makedirs(os.path.dirname(REGISTRATIONS_FILE), exist_ok=True)
-        
-        # Rewrite the entire CSV (it's small — one row per student)
-        with open(REGISTRATIONS_FILE, mode='w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow(["roll_no", "ip_address", "timestamp"])
-            for r_no, data in ip_roll_map.items():
-                writer.writerow([r_no, data["ip"], data["timestamp"]])
-    
+        persist_registration(capitalized_roll_no, effective_ip)
+
     # ---- Build the personalized zip ----
     # The template zip lives in .active_lab/statics/. We clone it, rename the
     # folder to Lab_ROLLNO, and inject ROLL_NO + SERVER_URL into config.sh.
@@ -2016,7 +1968,7 @@ async def starter_kit(request: Request, roll_no: str):
                     text = re.sub(r'ROLL_NO="[^"]*"', f'ROLL_NO="{capitalized_roll_no}"', text)
                     if hasattr(request.state, "client_ip") and SERVER_IP != "127.0.0.1":
                          # use detected server IP
-                         text = re.sub(r'SERVER_URL="[^"]*"', f'SERVER_URL="http://{SERVER_IP}:8000"', text)
+                         text = re.sub(r'SERVER_URL="[^"]*"', f'SERVER_URL="http://{SERVER_IP}:{request.url.port or 8000}"', text)
                     else:
                          # fallback to Host header
                          host_url = request.headers.get("host", f"{SERVER_IP}:8000")
@@ -2031,7 +1983,7 @@ async def starter_kit(request: Request, roll_no: str):
             # make sure config.sh ends up inside the roll folder
             if not config_found:
                 if hasattr(request.state, "client_ip") and SERVER_IP != "127.0.0.1":
-                    server_url_str = f"http://{SERVER_IP}:8000"
+                    server_url_str = f"http://{SERVER_IP}:{request.url.port or 8000}"
                 else:
                     host_url = request.headers.get("host", f"{SERVER_IP}:8000")
                     server_url_str = f"http://{host_url}"
@@ -2216,17 +2168,8 @@ async def handleSubmit(
     qno_upper = qno.upper()
     roll_upper = roll.upper()
 
-    # Rate limiting
-    import time as _time
-    now = _time.time()
-    last_submit = _submission_cooldowns.get(roll_upper, 0)
-    if now - last_submit < SUBMIT_COOLDOWN_SECONDS and not is_admin:
-        remaining = int(SUBMIT_COOLDOWN_SECONDS - (now - last_submit)) + 1
-        return JSONResponse(status_code=429, content={"response": f"Rate limited. Please wait {remaining}s before submitting again."})
-    _submission_cooldowns[roll_upper] = now
-
     # Input sanitization
-    if not qno_upper.replace('_','').isalnum() or not roll_upper.replace('_','').isalnum():
+    if not re.fullmatch(r"Q[1-9][0-9]*", qno_upper) or not re.fullmatch(r"[A-Z0-9_]{1,40}", roll_upper):
         return JSONResponse(status_code=400, content={"response": "Invalid question or roll number."})
 
     # Must be in the authorized student list
@@ -2245,13 +2188,47 @@ async def handleSubmit(
         await record_violation("Submit IP Mismatch", roll_upper, registered_ip, effective_ip)
         return JSONResponse(status_code=403, content={"response": f"Violation: Submission from unregistered IP ({effective_ip})."})
 
-    # All checks passed — read the file and queue it for grading
-    file_content = await file.read()
-    file_content_str = file_content.decode('utf-8', errors='ignore')
+    lab = active_lab()
+    if not (Path(lab) / "testcases" / qno_upper / "input").is_dir():
+        return JSONResponse(status_code=404, content={"response": "Unknown question."})
+    if not file.filename or Path(file.filename).suffix.lower() != ".cpp":
+        return JSONResponse(status_code=400, content={"response": "Upload a C++ source file."})
+    data = await file.read(MAX_SOURCE_BYTES + 1)
+    if not data or len(data) > MAX_SOURCE_BYTES:
+        return JSONResponse(status_code=413, content={"response": "Invalid source size."})
+    try:
+        content = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return JSONResponse(status_code=400, content={"response": "Source must be UTF-8."})
 
-    # Queue task for Celery
-    work = handle_submission.delay(qno_upper, roll_upper, file.filename, file_content_str)    
-    return JSONResponse({"taskid": work.id})
+    task_id = str(uuid4())
+    async with file_lock:
+        # Recheck the binding after reading the file. Recovery or deletion
+        # could have changed it while this request was waiting.
+        if ip_roll_map.get(roll_upper, {}).get("ip") != effective_ip:
+            return JSONResponse(status_code=403, content={"response": "Registration changed. Please retry."})
+        now = time.monotonic()
+        if not is_admin and now - _submission_cooldowns.get(roll_upper, -SUBMIT_COOLDOWN_SECONDS) < SUBMIT_COOLDOWN_SECONDS:
+            return JSONResponse(status_code=429, content={"response": "Please wait before submitting again."})
+        try:
+            admission = await run_in_threadpool(admit, capp.backend.client, task_id, lab, roll_upper)
+            if admission:
+                status_code = 429 if admission == 1 else 503
+                return JSONResponse(status_code=status_code, content={"response": "A grading slot is unavailable. Please retry."})
+            job = {
+                "qno": qno_upper, "roll": roll_upper, "filename": file.filename,
+                "content": content, "lab": lab, "roster": str(Path(STUDENTS_FILE).resolve()),
+                "attempt": f"{datetime.now():%Y%m%d-%H%M%S}-{task_id}",
+            }
+            try:
+                await run_in_threadpool(handle_submission.apply_async, kwargs=job, task_id=task_id)
+            except (OperationalError, RedisError):
+                await run_in_threadpool(release, capp.backend.client, task_id, lab, roll_upper)
+                raise
+        except (RedisError, OperationalError):
+            return JSONResponse(status_code=503, content={"response": "Grading is temporarily unavailable."})
+        _submission_cooldowns[roll_upper] = now
+    return JSONResponse({"taskid": task_id})
 
 
 # --- Utility endpoints ---
@@ -2293,24 +2270,29 @@ async def request_recovery(qno: str, roll: str, request: Request):
         raise HTTPException(status_code=404, detail="No submissions found for this question.")
 
     global total_recovery_count
-    total_recovery_count += 1
-    
-    if roll_upper not in recovery_requests:
-        recovery_requests[roll_upper] = {}
     effective_ip = get_client_ip(request)
-    recovery_requests[roll_upper][qno_upper] = {"status": "pending", "ip": effective_ip}
-    save_recovery_requests()
-    print(f"[RECOVERY] Request from {roll_upper} for {qno_upper} (IP: {effective_ip})")
-
+    if not any(effective_ip.startswith(subnet + ".") for subnet in LAB_SUBNETS) or not is_authorized_system(effective_ip, allowed_systems):
+        raise HTTPException(status_code=403, detail="Recovery requires an allowed lab address.")
+    async with file_lock:
+        requests = recovery_requests.setdefault(roll_upper, {})
+        previous = requests.get(qno_upper)
+        if previous:
+            if previous.get("ip") == effective_ip:
+                return JSONResponse({"status": previous["status"]})
+            raise HTTPException(status_code=409, detail="Another recovery request is already pending or approved.")
+        total_recovery_count += 1
+        requests[qno_upper] = {"status": "pending", "ip": effective_ip}
+        save_recovery_requests()
     return JSONResponse({"status": "pending", "message": "Recovery request submitted. Waiting for admin approval."})
 
+
 @app.get("/api/recovery-status/{qno}/{roll}")
-async def get_recovery_status(qno: str, roll: str):
+async def get_recovery_status(qno: str, roll: str, request: Request):
     """Student polls this to check if their recovery request was approved."""
     roll_upper = roll.upper()
     qno_upper = qno.upper()
     req_data = recovery_requests.get(roll_upper, {}).get(qno_upper)
-    if not req_data:
+    if not req_data or (req_data.get("ip") != get_client_ip(request) and not is_super_admin(request)):
         return JSONResponse({"status": "none"})
     return JSONResponse({"status": req_data["status"]})
 
@@ -2334,7 +2316,7 @@ async def recover_code(qno: str, roll: str, request: Request):
     # Admins can always recover; students need approval
     if not is_admin:
         req_data = recovery_requests.get(roll_upper, {}).get(qno_upper)
-        if not req_data or req_data["status"] != "approved":
+        if not req_data or req_data["status"] != "approved" or req_data.get("ip") != effective_ip:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Recovery not approved yet. Please wait for admin approval.")
 
     # verify IP match (admins bypass)
@@ -2376,8 +2358,10 @@ async def recover_code(qno: str, roll: str, request: Request):
 # --- Admin recovery management endpoints ---
 
 @app.get("/api/recovery-requests")
-async def list_recovery_requests():
-    """Admin-only: list all pending recovery requests with their IP info."""
+async def list_recovery_requests(request: Request):
+    """List pending requests for the administrator."""
+    if not is_super_admin(request):
+        raise HTTPException(status_code=403, detail="Admin privileges required")
     pending = []
     for roll, q_dict in recovery_requests.items():
         for qno, info in q_dict.items():
@@ -2396,14 +2380,30 @@ async def list_recovery_requests():
 @app.post("/admin/approve-recovery")
 async def approve_recovery(roll: str, qno: str, request: Request):
     """Admin approves a student's recovery request."""
-    roll_upper = roll.upper()
-    qno_upper = qno.upper()
-    if roll_upper in recovery_requests and qno_upper in recovery_requests[roll_upper]:
-        recovery_requests[roll_upper][qno_upper]["status"] = "approved"
+    if not is_super_admin(request):
+        raise HTTPException(status_code=403, detail="Admin privileges required")
+    roll_upper, qno_upper = roll.upper(), qno.upper()
+    async with file_lock:
+        entry = recovery_requests.get(roll_upper, {}).get(qno_upper)
+        if entry is None:
+            raise HTTPException(status_code=404, detail="No pending request found.")
+        ip = entry["ip"]
+        if not any(ip.startswith(subnet + ".") for subnet in LAB_SUBNETS) or not is_authorized_system(ip, allowed_systems):
+            raise HTTPException(status_code=403, detail="Replacement address is not allowed.")
+        if any(other != roll_upper and data["ip"] == ip for other, data in ip_roll_map.items()):
+            raise HTTPException(status_code=409, detail="Replacement address already belongs to another student.")
+        previous_ip = ip_roll_map.get(roll_upper, {}).get("ip")
+        persist_registration(roll_upper, ip)
+        entry.update(status="approved", previous_ip=previous_ip, approved_at=datetime.now().isoformat())
         save_recovery_requests()
-        print(f"[RECOVERY] Approved {roll_upper} for {qno_upper}")
-        return JSONResponse({"status": "approved"})
-    return JSONResponse({"status": "not_found", "message": "No pending request found."}, status_code=404)
+        await run_in_threadpool(append_recovery_audit, roll_upper, qno_upper, previous_ip, ip)
+    return JSONResponse({"status": "approved"})
+
+
+def append_recovery_audit(roll, question, old_ip, new_ip):
+    with open(Path(active_lab()) / "recovery_audit.csv", "a", newline="", encoding="utf-8") as file:
+        csv.writer(file).writerow([datetime.now().isoformat(), roll, question, old_ip, new_ip])
+
 
 @app.post("/admin/reject-recovery")
 async def reject_recovery(roll: str, qno: str, request: Request):
@@ -2491,22 +2491,33 @@ async def get_submission_status_api():
 # --- Task status + static file mounts ---
 
 @app.get("/task-status/{task_id}")
-async def get_task_status(task_id: str):
-    """Poll the status of a Celery grading task."""
-
-    async_result = AsyncResult(task_id)
-    
-    result = async_result.result
+async def get_task_status(task_id: str, request: Request):
+    """Return a result only to the registered student or local administrator."""
+    try:
+        if str(UUID(task_id)) != task_id:
+            raise ValueError
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Unknown task")
+    try:
+        payload = await run_in_threadpool(capp.backend.client.get, owner_key(task_id))
+        if payload is None:
+            raise HTTPException(status_code=404, detail="Unknown task")
+        owner = json.loads(payload)
+        if owner["lab"] != active_lab():
+            raise HTTPException(status_code=404, detail="Unknown task")
+        registered = ip_roll_map.get(owner["roll"], {})
+        if not is_super_admin(request) and registered.get("ip") != get_client_ip(request):
+            raise HTTPException(status_code=403, detail="Task belongs to another student")
+        meta = await run_in_threadpool(capp.backend.get_task_meta, task_id)
+        if not is_super_admin(request) and ip_roll_map.get(owner["roll"], {}).get("ip") != get_client_ip(request):
+            raise HTTPException(status_code=403, detail="Task belongs to another student")
+    except RedisError:
+        raise HTTPException(status_code=503, detail="Grading is temporarily unavailable")
+    result = meta.get("result")
     if isinstance(result, Exception):
-        result = str(result)  # serialize exceptions so JSON doesn't choke
-        
-    return JSONResponse(
-        {
-            "task-id": task_id,
-            "status": async_result.status,
-            "result": result
-        }
-    )
+        result = "The grading worker could not complete this attempt."
+    return JSONResponse({"task-id": task_id, "status": meta["status"], "result": result})
+
 
 # Static file mounts — these MUST come after all route definitions.
 # If mounted before, they'd shadow our dynamic routes.
@@ -2531,6 +2542,6 @@ if os.path.isdir("assets"):
 # Entry point for running directly with `python main.py` (normally started via start.sh + uvicorn)
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="127.0.0.1" if os.getenv("DCF_ALLOW_UNSANDBOXED") == "1" else "0.0.0.0", port=8000, proxy_headers=False)
 
 

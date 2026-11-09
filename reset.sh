@@ -139,10 +139,14 @@ fi
 
 echo ""
 
-# Stop the server first to prevent file lock issues
-echo -e "${BLUE}--->${NC} ${BOLD}Stopping server${NC}"
-pkill -f "uvicorn main:app" 2>/dev/null && print_ok "Stopped FastAPI" || echo -e "  ${DIM}[--] FastAPI not running${NC}"
-pkill -f "celery -A task.capp worker" 2>/dev/null && print_ok "Stopped Celery" || echo -e "  ${DIM}[--] Celery not running${NC}"
+# Serialize with start.sh. A reset must never signal unrelated services.
+mkdir -p logs
+LAUNCH_LOCK=logs/.active-launch
+if ! mkdir "$LAUNCH_LOCK" 2>/dev/null; then
+    echo "Stop the running lab server before resetting this checkout." >&2
+    exit 1
+fi
+trap 'rmdir "$LAUNCH_LOCK" 2>/dev/null || true' EXIT
 
 # Wipe submissions
 echo -e "\n${BLUE}--->${NC} ${BOLD}Clearing data${NC}"
@@ -162,9 +166,9 @@ print_ok "Reset violations.csv"
 > "$LAB_PATH/grades.csv"
 print_ok "Reset grades.csv"
 
-# Clear the symlink cache
-rm -rf .active_lab/* 2>/dev/null
-print_ok "Purged .active_lab/ cache"
+# Drop selected-lab recovery approvals. The launcher rebuilds its links.
+printf '{}\n' > "$LAB_PATH/recovery_requests.json"
+print_ok "Reset recovery requests"
 
 echo ""
 echo -e "${GREEN}${BOLD}$COURSE / $LAB has been factory reset.${NC}"

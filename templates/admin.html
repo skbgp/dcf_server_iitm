@@ -1292,7 +1292,7 @@
                 if (data.status === "Success") {
                     if (data.report_url) {
                         showStatus("MOSS check complete! Opening report...");
-                        window.open(data.report_url, '_blank');
+                        window.open(data.report_url, '_blank', 'noopener,noreferrer');
                     } else {
                         showStatus(data.message || "MOSS checks completed successfully.");
                     }

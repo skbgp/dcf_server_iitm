@@ -16,7 +16,11 @@ for arg in "$@"; do
 done
 set -- "${ARGS[@]}"
 
-PORT=8000           # the HTTP port for the FastAPI server
+PORT=${DCF_PORT:-8000}
+HOST=0.0.0.0
+if [ "${DCF_ALLOW_UNSANDBOXED:-0}" = 1 ]; then
+    HOST=127.0.0.1
+fi
 COURSE=${1}         # first argument: course name (e.g. CS2810)
 LAB=${2}            # second argument: lab name (e.g. Lab5)
 
@@ -47,31 +51,19 @@ show_banner() {
     echo ""
 }
 
-# ---- SERVICE CLEANUP ----
-stop_existing_services() {
-    log "Cleaning up previous sessions..."
-    
-    pkill -f "uvicorn main:app" 2>/dev/null && log_ok "Stopped previous FastAPI server" || true
-    pkill -f "celery -A task.capp worker" 2>/dev/null && log_ok "Stopped previous Celery workers" || true
-    
-    if lsof -i:6379 > /dev/null 2>&1; then
-        if command -v redis-cli &> /dev/null && redis-cli ping &> /dev/null; then
-            log_skip "Redis already running and healthy — keeping it"
-        else
-            log "Redis on 6379 is unresponsive — restarting"
-            pkill -f "redis-server" 2>/dev/null
-        fi
-    fi
-    
-    pkill -f "python3 main.py" 2>/dev/null
-    pkill -f "python3 task.py" 2>/dev/null
-    
-    PORT_PID=$(lsof -t -i:$PORT 2>/dev/null)
-    if [ -n "$PORT_PID" ]; then
-        kill -9 $PORT_PID 2>/dev/null
-        sleep 1
-    fi
-}
+# Refuse to replace another listener. Only stop processes started below.
+if ! python3 - "$HOST" "$PORT" <<'CHECK_PORT'
+import socket
+import sys
+
+with socket.socket() as listener:
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    listener.bind((sys.argv[1], int(sys.argv[2])))
+CHECK_PORT
+then
+    print_fail "Cannot bind port $PORT. Stop the existing server or set DCF_PORT."
+    exit 1
+fi
 
 # List valid labs inside a course directory.
 list_labs() {
@@ -84,7 +76,6 @@ list_labs() {
 
 # ---- MAIN FLOW ----
 show_banner
-stop_existing_services
 
 # ---- INTERACTIVE SELECTION ----
 if [ -z "$COURSE" ] || [ -z "$LAB" ]; then
@@ -220,50 +211,43 @@ export PATH="$HOME/.local/bin:$PATH"
 # ---- STEP 1: INSTALL DEPENDENCIES ----
 echo -e "\n${DIM}Setting up...${NC}"
 
-IS_DEBIAN=false
-if [ -f /etc/debian_version ]; then IS_DEBIAN=true; fi
-
-if [ "$IS_DEBIAN" = true ]; then
-    MISSING_SYS_DEPS=""
-    command -v redis-server &> /dev/null || MISSING_SYS_DEPS="$MISSING_SYS_DEPS redis-server"
-    command -v bwrap &> /dev/null || MISSING_SYS_DEPS="$MISSING_SYS_DEPS bubblewrap"
-    command -v pip3 &> /dev/null || MISSING_SYS_DEPS="$MISSING_SYS_DEPS python3-pip"
-    command -v lsof &> /dev/null || MISSING_SYS_DEPS="$MISSING_SYS_DEPS lsof"
-    command -v nc &> /dev/null || MISSING_SYS_DEPS="$MISSING_SYS_DEPS netcat-openbsd"
-    dpkg -s python3-venv &> /dev/null || MISSING_SYS_DEPS="$MISSING_SYS_DEPS python3-venv python3-full"
-    
-    if [ -n "$MISSING_SYS_DEPS" ]; then
-        log "Installing:$MISSING_SYS_DEPS"
-        sudo apt-get update &> /dev/null && sudo apt-get install -y $MISSING_SYS_DEPS &> /dev/null || { print_fail "Failed to install system packages."; exit 1; }
-        log_ok "System packages installed"
-    fi
-fi
-
-if [ "$IS_DEBIAN" = true ]; then
-    if ! command -v celery &> /dev/null || ! command -v uvicorn &> /dev/null; then
-        pip3 install -r requirements.txt --break-system-packages &> /dev/null || { print_fail "Failed to install Python packages."; exit 1; }
-        log_ok "Python packages installed"
-    fi
-else
-    VENV_PATH="$HOME/serverenv"
-    if [ ! -d "$VENV_PATH" ]; then
-        python3 -m venv "$VENV_PATH" || { print_fail "Failed to create venv."; exit 1; }
-        log_ok "Created virtualenv at $VENV_PATH"
-    fi
-    source "$VENV_PATH/bin/activate"
-    if ! command -v celery &> /dev/null; then
-        pip install -r requirements.txt &> /dev/null || { print_fail "Failed to install requirements."; exit 1; }
-        log_ok "Python packages installed"
-    fi
-fi
-
-# Sanity checks
-for cmd in redis-server celery uvicorn; do
-    if ! command -v $cmd &> /dev/null; then
-        print_fail "Required command '$cmd' not found after installation!"
+for cmd in python3 g++ redis-server redis-cli; do
+    if ! command -v "$cmd" >/dev/null; then
+        print_fail "Install $cmd before starting the server."
         exit 1
     fi
 done
+
+VENV_PATH=${DCF_VENV:-.venv}
+if [ ! -x "$VENV_PATH/bin/python" ]; then
+    python3 -m venv "$VENV_PATH" || exit 1
+fi
+source "$VENV_PATH/bin/activate"
+if [ "${DCF_SKIP_PIP_INSTALL:-0}" != 1 ]; then
+    python -m pip install -r requirements.txt || exit 1
+fi
+python -m pip check || exit 1
+python -c 'from sandbox import require_sandbox; require_sandbox()' || exit 1
+
+mkdir -p logs
+LAUNCH_LOCK=logs/.active-launch
+if ! mkdir "$LAUNCH_LOCK" 2>/dev/null; then
+    print_fail "This checkout already has a launcher or reset in progress."
+    exit 1
+fi
+REDIS_PID=""
+CELERY_PID=""
+FASTAPI_PID=""
+cleanup() {
+    trap - EXIT INT TERM
+    for pid in "$FASTAPI_PID" "$CELERY_PID" "$REDIS_PID"; do
+        if [ -n "$pid" ]; then kill "$pid" 2>/dev/null || true; fi
+    done
+    wait 2>/dev/null || true
+    rmdir "$LAUNCH_LOCK" 2>/dev/null || true
+}
+trap cleanup EXIT
+trap 'exit 0' INT TERM
 
 # ---- STEP 2: SET UP .active_lab SYMLINKS ----
 log "Setting up symlinks..."
@@ -285,11 +269,15 @@ fi
 rm -rf "./.active_lab/offline_files" 2>/dev/null
 ln -sf "../$COURSE_DIR/offline_files" "./.active_lab/offline_files"
 
-for item in registrations.csv violations.csv grades.csv; do
+for item in registrations.csv violations.csv grades.csv system_access.txt; do
     if [ ! -f "$LAB_DIR/$item" ]; then touch "$LAB_DIR/$item"; fi
 done
  
-for item in testcases submissions registrations.csv violations.csv course.conf grades.csv statics; do
+if [ ! -f "$LAB_DIR/recovery_requests.json" ]; then
+    printf '{}\n' > "$LAB_DIR/recovery_requests.json"
+fi
+
+for item in testcases submissions registrations.csv violations.csv course.conf grades.csv statics system_access.txt recovery_requests.json; do
     rm -rf "./.active_lab/$item" 2>/dev/null
     if [ -e "$LAB_DIR/$item" ]; then ln -sf "../$LAB_DIR/$item" "./.active_lab/$item"; fi
 done
@@ -300,6 +288,7 @@ log_ok "Symlinks ready"
 log "Detecting network..."
 
 LOCAL_IP=""
+[ "$HOST" = 127.0.0.1 ] && LOCAL_IP=127.0.0.1
 [ -z "$LOCAL_IP" ] && LOCAL_IP=$(python3 -c "import socket; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.connect(('8.8.8.8',80)); print(s.getsockname()[0]); s.close()" 2>/dev/null)
 [ -z "$LOCAL_IP" ] && LOCAL_IP=$(ipconfig getifaddr en0 2>/dev/null)
 [ -z "$LOCAL_IP" ] && LOCAL_IP=$(ipconfig getifaddr en1 2>/dev/null)
@@ -310,10 +299,10 @@ SERVER_URL="http://${LOCAL_IP}:${PORT}"
 
 log_ok "Server IP: ${LOCAL_IP}"
 
-for cfg in $(find ./.active_lab/statics -name "config.sh" 2>/dev/null); do
+while IFS= read -r -d '' cfg; do
     python3 -c "import sys; lines = [l for l in open(sys.argv[1]) if not l.startswith('SERVER_URL=')]; open(sys.argv[1], 'w').writelines(lines)" "$cfg"
     echo "SERVER_URL=\"${SERVER_URL}\"" >> "$cfg"
-done
+done < <(find -H ./.active_lab/statics -name "config.sh" -print0 2>/dev/null)
 log_ok "Server URL injected"
 
 # ---- STEP 4: PACKAGE STARTER KIT ----
@@ -326,12 +315,12 @@ log "Packaging starter kit..."
         find "$TARGET_DIR" -type d \( -name "logs" -o -name "actual_output" -o -name "__pycache__" \) -exec rm -rf {} + 2>/dev/null
         rm -f *.zip .*.zip
         chmod +x "$TARGET_DIR"/*.sh 2>/dev/null || true
-        python3 -c "import shutil; shutil.make_archive('${TARGET_DIR}', 'zip', '.', '${TARGET_DIR}')"
+        python3 -c 'import shutil, sys; shutil.make_archive(sys.argv[1], "zip", ".", sys.argv[1])' "$TARGET_DIR"
         mv "${TARGET_DIR}.zip" ".${TARGET_DIR}.zip" 2>/dev/null
     fi
 )
 
-ZIP_NAME=$(find .active_lab/statics -maxdepth 1 -name ".*.zip" 2>/dev/null | head -1)
+ZIP_NAME=$(find -H .active_lab/statics -maxdepth 1 -name ".*.zip" 2>/dev/null | head -1)
 if [ -n "$ZIP_NAME" ]; then
     log_ok "Starter kit packaged"
 else
@@ -341,33 +330,30 @@ fi
 # ---- STEP 5: START REDIS ----
 log "Starting Redis..."
 
-PORT_6379_IN_USE=false
-if command -v lsof &>/dev/null && lsof -i:6379 &>/dev/null; then PORT_6379_IN_USE=true;
-elif command -v nc &>/dev/null && nc -z localhost 6379 &>/dev/null; then PORT_6379_IN_USE=true;
-fi
-
-if [ "$PORT_6379_IN_USE" = false ]
-then
-    redis-server --dir logs/ &> logs/redis.log &
+if [ -n "${DCF_REDIS_URL:-}" ]; then
+    log_ok "Using the configured Redis endpoint"
+elif redis-cli -h 127.0.0.1 ping 2>/dev/null | grep -qx PONG; then
+    log_ok "Using existing Redis on loopback"
+else
+    mkdir -p logs/redis
+    redis-server --bind 127.0.0.1 --appendonly yes --dir logs/redis &> logs/redis.log &
     REDIS_PID=$!
     sleep 2
-    if ! kill -0 $REDIS_PID 2>/dev/null; then
-        print_fail "Redis failed to start! Check logs/redis.log"
+    if ! kill -0 "$REDIS_PID" 2>/dev/null; then
+        print_fail "Redis failed to start. Check logs/redis.log."
         exit 1
     fi
-    log_ok "Redis started (PID: $REDIS_PID)"
-else
-    REDIS_PID=""
-    log_ok "Using existing Redis"
 fi
 
 # ---- STEP 6: START CELERY WORKERS ----
 log "Starting Celery..."
 
-CPU_CORES=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
-CELERY_CONCURRENCY=$(( CPU_CORES * 3 ))
-[ "$CELERY_CONCURRENCY" -lt 8 ] && CELERY_CONCURRENCY=8
-celery -A task.capp worker -n worker_$PORT@%h --loglevel=info -c $CELERY_CONCURRENCY &> logs/celery.log &
+CELERY_CONCURRENCY=${DCF_WORKERS:-4}
+if ! [[ "$CELERY_CONCURRENCY" =~ ^[1-8]$ ]]; then
+    print_fail "DCF_WORKERS must be between 1 and 8."
+    exit 1
+fi
+python -m celery -A task.capp worker -n "worker_$PORT@%h" --loglevel=info -c "$CELERY_CONCURRENCY" &> logs/celery.log &
 CELERY_PID=$!
 sleep 1
 
@@ -382,7 +368,7 @@ fi
 # ---- STEP 7: START FASTAPI SERVER ----
 log "Starting FastAPI..."
 
-python3 -m uvicorn main:app --host 0.0.0.0 --port $PORT --limit-concurrency 150 &> logs/fastapi.log &
+python -m uvicorn main:app --host "$HOST" --port "$PORT" --no-proxy-headers --limit-concurrency 150 &> logs/fastapi.log &
 FASTAPI_PID=$!
 sleep 2
 
@@ -404,38 +390,22 @@ echo ""
 echo -e "Press ${RED}${BOLD}[CTRL+C]${NC} to shut down all services."
 echo -e "${DIM}Logs: logs/fastapi.log  |  logs/celery.log  |  logs/redis.log${NC}"
 
-# ---- GRACEFUL SHUTDOWN HANDLER ----
-cleanup() {
-    local exit_code=$1
-    echo -e "\n\n${YELLOW}${BOLD}Shutting down...${NC}"
-    if [ "$exit_code" != "0" ] && [ -n "$exit_code" ]; then
-        echo -e "${RED}Service failure detected — shutting down all services.${NC}"
-    fi
-    kill $FASTAPI_PID $CELERY_PID 2>/dev/null
-    [ -n "$REDIS_PID" ] && kill $REDIS_PID 2>/dev/null
-    pkill -P $$ 2>/dev/null
-    echo -e "${GREEN}All services stopped.${NC}"
-    exit ${exit_code:-0}
-}
-
-trap 'cleanup 0' INT TERM
-
 # ---- WATCHDOG LOOP ----
 while true; do
     if [ -n "$REDIS_PID" ] && ! kill -0 $REDIS_PID 2>/dev/null; then
         echo -e "\n${RED}${BOLD}CRITICAL: Redis has crashed!${NC}"
         tail -n 10 logs/redis.log
-        cleanup 1
+        exit 1
     fi
     if ! kill -0 $CELERY_PID 2>/dev/null; then
         echo -e "\n${RED}${BOLD}CRITICAL: Celery worker has crashed!${NC}"
         tail -n 10 logs/celery.log
-        cleanup 1
+        exit 1
     fi
     if ! kill -0 $FASTAPI_PID 2>/dev/null; then
         echo -e "\n${RED}${BOLD}CRITICAL: FastAPI server has crashed!${NC}"
         tail -n 10 logs/fastapi.log
-        cleanup 1
+        exit 1
     fi
     sleep 2
 done

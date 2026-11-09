@@ -8,10 +8,10 @@ The main problem this solves is running student code securely and grading it aut
 
 - **Completely Offline Grading:** Designed for isolated LAN environments without cloud dependencies.
 - **Asynchronous Evaluation:** Powered by FastAPI, Celery, and Redis to handle concurrent submissions smoothly.
-- **Secure Sandboxing:** Uses Linux namespaces via Bubblewrap (`bwrap`) to execute code with strict CPU, memory, and network isolation.
+- **Sandboxed grading:** Uses Bubblewrap namespaces for compilation and execution on Linux, with wall-clock timeouts, per-process limits and bounded output capture.
 - **IP Address Binding:** Automatically locks student accounts to their initial machine's IP, preventing exam sharing.
 - **Live Admin Dashboard:** Real-time metrics, access logs, access control, and IP whitelisting for designated lab rooms.
-- **Integrated Plagiarism Detection:** Built-in proxy for Stanford MOSS to analyze similarity across all student submissions instantly.
+- **Similarity reports:** Optional Stanford MOSS submission and validated report links from the admin dashboard.
 - **Simple Student CLI:** Students receive a fully packaged `.zip` environment with custom `./check.sh` and `./submit.sh` tools.
 - **Live Leaderboard:** Per-question leaderboards that update as submissions are graded.
 - **Code Recovery:** Built-in request system for students whose machines crash mid-exam to cleanly rebind to a new IP.
@@ -23,7 +23,7 @@ The main problem this solves is running student code securely and grading it aut
 
 The core of the system is built with FastAPI for the web interface and Celery + Redis for a background grading queue, which keeps the main web server responsive even when evaluating lots of complex C++ code.
 
-Instead of heavy Docker containers, we use **Bubblewrap** (`bwrap`) to run student submissions in Linux namespaces. This is fast and lets us completely isolate the process — the code has no network access, runs in a read-only root filesystem, and has strict memory and time limits. This stops accidental infinite loops or malicious behavior.
+Bubblewrap runs the compiler and submission in Linux namespaces without access to the host network. The sandbox mounts system directories read-only and gives each job a dedicated writable directory. Run the service under a dedicated non-root account. The worker applies per-process limits and caps captured output, and the queue limits concurrent work. For aggregate memory and process guarantees, apply service-level cgroup limits on the Linux host.
 
 The actual grading flow looks something like this:
 
@@ -41,7 +41,7 @@ Because it's meant for exams, there are a few built-in security mechanisms:
 - **IP Binding:** The first time a student downloads their exam kit using their roll number, the server permanently binds that roll number to their machine's LAN IP address for the duration of the exam.
 - **Admin Dashboard:** Admins get a real-time view of everyone connected. You can manually whitelist entire IP ranges (like `10.21.224.*`) for a particular lab room.
 - **Violation Logging:** If a student tries to download a kit or submit code from outside the allowed IP range (e.g. from an unauthorized mobile hotspot), they are blocked and it shows up live on the admin dashboard.
-- **MOSS Plagiarism Checking:** The admin dashboard integrates directly with Stanford's MOSS. You can trigger a plagiarism check across all submissions with one click. The server uses `mosspy` to upload the code, and then displays the results directly in the dashboard via a built-in proxy.
+- **MOSS Plagiarism Checking:** The admin dashboard integrates directly with Stanford's MOSS. You can trigger a plagiarism check across all submissions with one click. The server uses `mosspy` to upload the code, and opens validated Stanford report URLs in a separate tab.
 - **Rate Limiting:** There's a 5 second cooldown between submissions to prevent queue spamming.
 
 ### What the students see
@@ -106,7 +106,7 @@ dcf_server_iitm/
 
 You'll need a Linux environment (Ubuntu/Debian recommended) to use Bubblewrap properly. You also need `python3`, `pip`, `g++`, `redis-server`, and `bubblewrap` installed on the host. 
 
-macOS works for development but lacks full native isolation — `bwrap` doesn't exist on macOS, so student code runs without a sandbox. Never use macOS as an actual exam server with untrusted code. Python packages from `requirements.txt` are automatically installed by the start script.
+The grader requires a working Bubblewrap preflight on Linux by default. For trusted fixtures on a development machine, run `DCF_ALLOW_UNSANDBOXED=1 ./start.sh` to bind the server to loopback and opt into direct execution. The dependency versions in `requirements.txt` were exercised with Python 3.12.
 
 ### Clone and go
 
@@ -168,32 +168,18 @@ CS24B003
 
 ## Starting the server — `start.sh`
 
-This is the main launcher. It handles literally everything — dependency installation, virtual environments, service cleanup, IP detection, starter kit zipping, and starting Redis + Celery + FastAPI with a crash watchdog.
-
-### Running it
+Install Python 3.12 with venv support, g++, Redis and Bubblewrap before starting the Linux grader.
 
 ```bash
-# Interactive — gives you menus to pick course and lab
-./start.sh
-
-# Or skip the menus
-./start.sh CS2810 Lab7
+./start.sh                 # Select a course and lab interactively
+./start.sh CS2810 Lab7     # Or select them by name
 ```
 
-On **Linux** (Debian/Ubuntu), it'll automatically install anything missing: `redis-server`, `bubblewrap`, `pip3`, `lsof`, `netcat`, `python3-venv`, and all the Python packages from `requirements.txt`.
+The launcher checks its port and sandbox, activates a checkout-local virtual environment, and creates `.active_lab` links for the selected lab. It packages the starter kit and starts the services. It shuts down only the processes it started and refuses to replace a listener or start a second launcher in the checkout.
 
-On **macOS**, it creates a virtualenv at `~/serverenv`, activates it, and installs the Python packages. You need to have Redis installed yourself (`brew install redis`).
+`DCF_PORT` selects the HTTP port and `DCF_WORKERS` selects one to eight workers. For a pre-provisioned offline install, set `DCF_VENV` to the environment and `DCF_SKIP_PIP_INSTALL=1`. Set `DCF_REDIS_URL` to use a dedicated pre-provisioned Redis endpoint. Reused Redis endpoints should be reserved for this grader.
 
-### What happens when you run it
-
-1. Kills any leftover FastAPI/Celery/Redis processes from a previous run
-2. Shows you course and lab selection menus (if you didn't pass arguments)
-3. Installs missing dependencies
-4. Creates `.active_lab/` — a directory of symlinks pointing to the selected lab's files
-5. Detects your LAN IP and writes it into the starter kit's `config.sh`
-6. Zips up the starter kit template
-7. Starts Redis (port 6379), Celery workers, and FastAPI (port 8000)
-8. Prints the server URL and enters a watchdog loop
+System access and recovery requests are stored with the selected lab. To restore access settings from an older install, place the relevant files into that lab before launch.
 
 You'll see something like:
 
@@ -224,10 +210,10 @@ This wipes all student data for a specific lab — submissions, registrations, g
 ```
 
 It'll show you exactly what it's about to delete and ask for confirmation. If you say yes:
-- Stops the running server first (to avoid file lock conflicts)
+- Requires you to stop the running server first
 - Deletes everything inside `submissions/`
 - Resets `registrations.csv`, `violations.csv`, and `grades.csv` back to just headers
-- Clears the `.active_lab/` symlink cache
+- Clears the selected lab’s recovery requests
 
 After resetting, just run `./start.sh` again to start fresh.
 
@@ -255,7 +241,7 @@ Share that zip with students. They unzip it, write their code, and run `./practi
 
 ## Using the admin panel
 
-The admin dashboard is restricted. You have to access the server from the host machine itself (or an explicitly allowed IP) to see it. When you open the server URL from the server machine, it automatically redirects to `/admin`.
+Admin routes require the server machine’s address. Set `DCF_ADMIN_PASSWORD` to also require HTTP Basic authentication with username `admin`. The launcher ignores proxy headers. Student access uses the lab address and roll binding, so use this only on the intended LAN.
 
 ### Opening the server to students
 
@@ -263,7 +249,7 @@ Before the exam starts, go to **System Access** and enter the IP subsets for the
 
 ### If a student needs to switch machines
 
-Their PC crashed, they moved seats — whatever. Their new IP won't match their bound IP. They go to `http://<SERVER_IP>:8000/recover`, submit a recovery request, and you click "Approve" on the admin dashboard. They can then re-download their starter kit and their latest submitted code.
+Their PC crashed, they moved seats — whatever. Their new IP won't match their bound IP. They go to `http://<SERVER_IP>:8000/recover`, submit a recovery request, and you verify their identity and click "Approve" on the admin dashboard. Approval records the move and binds the roll to the replacement lab address. The new address can download the approved source once.
 
 ### Downloading all submissions
 
@@ -289,7 +275,7 @@ When you click "Run MOSS" from the admin panel, the server:
 4. MOSS analyzes the code using a document fingerprinting algorithm and returns a URL to the results page
 5. The server saves the URL to `courses/<COURSE>/moss_history.csv` and opens the report in a new tab
 
-The report is served through a **built-in reverse proxy** with a dark-themed UI, so you don't have to worry about iframe restrictions or leaving the dashboard.
+The dashboard validates the Stanford report URL and opens it at Stanford. Core grading runs on the LAN. Running MOSS is a separate online operation that sends selected source files to Stanford.
 
 For "run all questions", it loops through each question directory (with a 3-second gap between requests to avoid rate limiting), and all generated report URLs go into MOSS History.
 
@@ -388,11 +374,11 @@ If port 8000 is blocked, students can't reach anything. If port 7690 is blocked,
 
 **"Cannot find the project root"** — The scripts look for `start.sh` in the same directory. Make sure you're running them from the project root, not from somewhere else.
 
-**Port 8000 already in use** — `start.sh` tries to kill whatever's on port 8000 automatically. If it fails: `lsof -i :8000` to find the PID, then `kill -9 <PID>`.
+**Port 8000 already in use** — stop the existing server using its launcher or choose another port with `DCF_PORT`.
 
 **Redis won't start** — Check if it's already running: `redis-cli ping` (should return `PONG`). If not: `redis-server &`.
 
-**"bubblewrap (bwrap) not found"** — Expected on macOS (runs in dev mode without sandbox). On Linux: `sudo apt-get install bubblewrap`.
+**Bubblewrap preflight failed** — install Bubblewrap and verify that the dedicated grader account is permitted to create the required namespaces under your Linux security policy.
 
 **"YOUR SYSTEM IS NOT AUTHORIZED"** — The admin hasn't opened access yet. Go to System Access in the admin panel and grant access.
 
@@ -412,3 +398,7 @@ tail -f logs/redis.log      # Message broker
 ---
 
 Built by Shubham (CS25M046) for IIT Madras.
+
+## Tests
+
+Install `httpx==0.28.1` in the test environment, then run `python -m unittest discover -s tests -v`. Tests cover output limits, deadlines, grade replay, result ownership, recovery, and MOSS report destinations. Use a synthetic lab, working Bubblewrap and an isolated Redis instance to exercise the complete grading flow. `DCF_ENABLE_TEST_IP=1` enables the localhost admin’s test IP header for integration testing.
